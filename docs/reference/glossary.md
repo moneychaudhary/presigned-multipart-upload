@@ -42,8 +42,7 @@ URL minted earlier may no longer be honoured.
 
 ## Connection Budget
 
-The ceiling on how many parts may be in flight across the whole batch, and the
-rule dividing it between uploads.
+The ceiling on how many parts may be in flight across the whole batch.
 
 It exists because browsers cap simultaneous connections per host. Exceeding the
 cap does not fail loudly — the surplus queues beneath the network layer, where

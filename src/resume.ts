@@ -70,7 +70,7 @@ export const listResumable = async ({
     totalParts: record.partCount,
     updatedAt: record.updatedAt,
     recovery:
-      record.handle !== null && platform.files.isHandleSupported() ? "handle" : "reselect",
+      record.handle !== null && platform.files?.isHandleSupported() ? "handle" : "reselect",
   }));
 };
 
@@ -143,10 +143,11 @@ const recoverFile = async (
   platform: Platform,
   options: CreateResumedBatchOptions,
 ): Promise<File> => {
-  if (record.handle !== null && platform.files.isHandleSupported()) {
-    const permitted = await platform.files.requestPermission(record.handle).catch(() => false);
+  const files = platform.files;
+  if (record.handle !== null && files?.isHandleSupported()) {
+    const permitted = await files.requestPermission(record.handle).catch(() => false);
     if (permitted) {
-      const file = await platform.files.readFile(record.handle);
+      const file = await files.readFile(record.handle);
       assertFingerprint(record.file, describeFile(file), options.fingerprint);
       return file;
     }

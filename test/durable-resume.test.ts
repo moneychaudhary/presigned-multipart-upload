@@ -4,11 +4,11 @@ import {
   createBatch,
   createMemoryStore,
   createResumedBatch,
-  fingerprintMismatch,
   listResumable,
   scopeStore,
   type RecordStore,
 } from "../src/index.js";
+import { fingerprintMismatch } from "../src/fingerprint.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle, type FakePlatformOptions } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch, partConcurrencyFor } from "../src/index.js";
+import { createBatch } from "../src/index.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
@@ -12,26 +12,6 @@ const opts = (platform: ReturnType<typeof createFakePlatform>, extra = {}) => ({
   partSize: 10 * KB,
   minPartSize: 1,
   ...extra,
-});
-
-describe("dividing the Connection Budget", () => {
-  it("gives one Upload the whole budget", () => {
-    expect(partConcurrencyFor(1, 5)).toBe(5);
-  });
-
-  it("shrinks each Upload's share as more become active", () => {
-    expect(partConcurrencyFor(2, 5)).toBe(4);
-    expect(partConcurrencyFor(3, 5)).toBe(3);
-    expect(partConcurrencyFor(5, 5)).toBe(1);
-  });
-
-  it("floors the share at one when there are more Uploads than budget", () => {
-    expect(partConcurrencyFor(9, 5)).toBe(1);
-  });
-
-  it("hands back the whole budget when nothing is active", () => {
-    expect(partConcurrencyFor(0, 5)).toBe(5);
-  });
 });
 
 describe("enforcing the Connection Budget", () => {

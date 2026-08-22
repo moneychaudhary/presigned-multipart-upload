@@ -2,7 +2,7 @@ import { backoffDelay } from "./backoff.js";
 import type { Classifier } from "./classify.js";
 import { MISSING_ETAG_MESSAGE, UploadError, toErrorInfo, uploadError } from "./errors.js";
 import { planParts } from "./plan.js";
-import { partConcurrencyFor, type Semaphore, createSemaphore } from "./semaphore.js";
+import type { Semaphore } from "./semaphore.js";
 import type {
   CompletedPart,
   FileDescriptor,
@@ -33,6 +33,8 @@ export interface UploadState {
   reopened: boolean;
   /** Durable reference to the file, where the browser could give one. */
   handle: unknown | null;
+  /** Bumped on every mutation, so a snapshot can be reused until it changes. */
+  version: number;
 }
 
 export interface UploadSettings {
@@ -55,8 +57,7 @@ export interface UploadDeps {
   settings: UploadSettings;
   /** Shared across the Batch — this is what enforces the Connection Budget. */
   budget: Semaphore;
-  activeUploads: () => number;
-  onChange: () => void;
+  onChange: (state: UploadState) => void;
   onPartLanded: (uploadId: string, partNumber: number) => void;
   onRetrying: (uploadId: string, partNumber: number, attempt: number, delayMs: number) => void;
   onRecord: (state: UploadState) => Promise<void>;
@@ -87,6 +88,7 @@ export const createUploadState = (
   controller: null,
   reopened: false,
   handle,
+  version: 0,
 });
 
 /**
@@ -176,7 +178,7 @@ const sendPartOnce = async (
   part.status = "uploading";
   part.attempts += 1;
   part.loaded = 0;
-  deps.onChange();
+  deps.onChange(state);
 
   const result = await platform.sendPart({
     url,
@@ -187,8 +189,13 @@ const sendPartOnce = async (
     timeoutMs: settings.partTimeoutMs,
     signal: state.controller!.signal,
     onProgress: (loaded) => {
-      part.loaded = Math.min(loaded, part.size);
-      deps.onChange();
+      const next = Math.min(loaded, part.size);
+      // XHR reports progress far more often than any interface can use, and
+      // each report costs a snapshot rebuild. Ignore movement below a percent
+      // of the Part unless it is the Part finishing.
+      if (next !== part.size && next - part.loaded < part.size / 100) return;
+      part.loaded = next;
+      deps.onChange(state);
     },
   });
 
@@ -204,16 +211,37 @@ const sendPartWithRetry = async (
 ): Promise<void> => {
   const { platform, settings } = deps;
 
-  for (let retry = 0; ; retry += 1) {
+  // Counted explicitly rather than by a loop variable, because parking while
+  // offline and re-Opening for fresh urls both retry without spending the
+  // budget. Decrementing a loop counter to express that was one slip away from
+  // a loop that never ends.
+  let retriesSpent = 0;
+
+  const stopIfHalted = (): void => {
     const stopped = halted(state);
     if (stopped) throw stopped;
+  };
+
+  const parkPart = (): void => {
+    part.status = "pending";
+    part.loaded = 0;
+    deps.onChange(state);
+  };
+
+  const failPart = (error: UploadError): never => {
+    part.status = "failed";
+    part.loaded = 0;
+    throw error;
+  };
+
+  while (true) {
+    stopIfHalted();
 
     // Park before spending an Attempt. Time spent disconnected must not consume
     // the Retry budget, or a laptop asleep for an hour wakes with none left.
     if (settings.waitWhileOffline && !platform.isOnline()) {
       await waitForOnline(platform, state.controller!.signal);
-      const stoppedAfterWait = halted(state);
-      if (stoppedAfterWait) throw stoppedAfterWait;
+      stopIfHalted();
     }
 
     try {
@@ -226,56 +254,57 @@ const sendPartWithRetry = async (
       // authorisation failure still terminates, because it 403s again straight
       // away with nothing landing in between.
       state.reopened = false;
-      deps.onChange();
+      deps.onChange(state);
       deps.onPartLanded(state.id, part.partNumber);
       await deps.onRecord(state);
       return;
     } catch (error) {
-      const stoppedNow = halted(state);
-      if (stoppedNow) throw stoppedNow;
+      stopIfHalted();
 
       // Losing the connection mid-Attempt is the same situation as being offline
       // beforehand: park and try again without spending the budget.
       if (settings.waitWhileOffline && !platform.isOnline()) {
-        part.status = "pending";
-        part.loaded = 0;
-        deps.onChange();
+        parkPart();
         await waitForOnline(platform, state.controller!.signal);
-        retry -= 1;
         continue;
       }
 
       const verdict = settings.classify(error, { alreadyReopened: state.reopened });
 
       if (verdict === "fatal") {
-        part.status = "failed";
-        part.loaded = 0;
-        throw error instanceof UploadError
-          ? error
-          : uploadError("SEND_FAILED", `Part ${part.partNumber} failed: ${String(error)}`);
-      }
-
-      if (verdict === "reopen") {
-        state.reopened = true;
-        await openUpload(state, deps);
-        retry -= 1;
-        continue;
-      }
-
-      if (retry >= settings.maxRetries) {
-        part.status = "failed";
-        part.loaded = 0;
-        throw uploadError(
-          "RETRIES_EXHAUSTED",
-          `Part ${part.partNumber} failed after ${part.attempts} attempts: ${String(error)}`,
+        failPart(
+          error instanceof UploadError
+            ? error
+            : uploadError("SEND_FAILED", `Part ${part.partNumber} failed: ${String(error)}`),
         );
       }
 
-      const delayMs = backoffDelay(retry, settings.retryBaseMs, settings.retryMaxMs, platform.random);
+      // Fresh urls are a new situation, not another go at the old one, so this
+      // costs nothing. The classifier only permits it once per landed Part.
+      if (verdict === "reopen") {
+        state.reopened = true;
+        await openUpload(state, deps);
+        continue;
+      }
+
+      if (retriesSpent >= settings.maxRetries) {
+        failPart(
+          uploadError(
+            "RETRIES_EXHAUSTED",
+            `Part ${part.partNumber} failed after ${part.attempts} attempts: ${String(error)}`,
+          ),
+        );
+      }
+
+      const delayMs = backoffDelay(
+        retriesSpent,
+        settings.retryBaseMs,
+        settings.retryMaxMs,
+        platform.random,
+      );
+      retriesSpent += 1;
       deps.onRetrying(state.id, part.partNumber, part.attempts, delayMs);
-      part.status = "pending";
-      part.loaded = 0;
-      deps.onChange();
+      parkPart();
       await platform.sleep(delayMs, state.controller!.signal);
     }
   }
@@ -293,7 +322,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   if (state.file === null) {
     state.status = "failed";
     state.error = { code: "FILE_REQUIRED", message: "The file's bytes are not available." };
-    deps.onChange();
+    deps.onChange(state);
     return;
   }
 
@@ -314,7 +343,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
       state.status = "failed";
       state.error = info;
     }
-    deps.onChange();
+    deps.onChange(state);
   };
 
   // A first run plans Parts; a Resume keeps the plan, and the Parts that landed.
@@ -342,7 +371,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   }
 
   state.status = "opening";
-  deps.onChange();
+  deps.onChange(state);
 
   try {
     await openUpload(state, deps);
@@ -362,22 +391,18 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   }
 
   state.status = "uploading";
-  deps.onChange();
+  deps.onChange(state);
   await deps.onRecord(state);
-
-  // Each Upload takes a share of the Batch-wide budget, so many files cannot
-  // together exceed the browser's per-host connection cap.
-  const share = createSemaphore(
-    Math.min(deps.budget.limit, partConcurrencyFor(deps.activeUploads(), deps.budget.limit)),
-  );
 
   const outstanding = state.parts.filter((part) => part.status !== "landed");
   const failures: unknown[] = [];
 
   await Promise.all(
     outstanding.map(async (part) => {
-      const releaseShare = await share.acquire();
-      const releaseBudget = await deps.budget.acquire();
+      // One queue, shared across the whole Batch. The browser's cap is per
+      // host, so that is where the limit belongs; a second per-Upload queue on
+      // top only added an await and a fairness rule the FIFO already gives.
+      const release = await deps.budget.acquire();
       try {
         if (failures.length > 0 || halted(state)) return;
         await sendPartWithRetry(state, part, deps);
@@ -387,8 +412,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
         // bandwidth on an Upload that is already going to need a Resume.
         state.controller?.abort();
       } finally {
-        releaseBudget();
-        releaseShare();
+        release();
       }
     }),
   );
@@ -406,7 +430,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   }
 
   state.status = "completing";
-  deps.onChange();
+  deps.onChange(state);
 
   const parts: CompletedPart[] = state.parts
     .filter((part) => part.eTag !== null)
@@ -425,5 +449,5 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   }
 
   state.status = "succeeded";
-  deps.onChange();
+  deps.onChange(state);
 };

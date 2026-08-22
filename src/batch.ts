@@ -49,13 +49,16 @@ const snapshotUpload = (state: UploadState): UploadSnapshot => {
   const loaded = state.parts.reduce((sum, part) => sum + part.loaded, 0);
   return Object.freeze({
     id: state.id,
-    file: Object.freeze({ ...state.descriptor }),
+    file: state.descriptor,
     status: state.status,
     progress: progressOf(Math.min(loaded, total), total),
-    parts: Object.freeze(state.parts.map((part) => Object.freeze({ ...part }))) as PartSnapshot[],
+    // Copied so a retained snapshot does not mutate underneath its holder, but
+    // not frozen: freezing every Part on every change was the single most
+    // expensive thing the library did, and `readonly` already says it.
+    parts: state.parts.map((part) => ({ ...part })),
     key: state.key,
     uploadId: state.uploadId,
-    error: state.error === null ? null : Object.freeze({ ...state.error }),
+    error: state.error,
     resumable: isResumable(state),
   });
 };
@@ -134,8 +137,20 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
   const running = new Map<string, Promise<void>>();
   const tornDown = new Set<string>();
 
+  // An Upload's snapshot is rebuilt only when that Upload changed. Without this
+  // a progress tick on one file re-copied the Parts of every file in the Batch.
+  const cache = new Map<string, { version: number; snapshot: UploadSnapshot }>();
+
+  const cachedSnapshot = (state: UploadState): UploadSnapshot => {
+    const hit = cache.get(state.id);
+    if (hit !== undefined && hit.version === state.version) return hit.snapshot;
+    const snapshot = snapshotUpload(state);
+    cache.set(state.id, { version: state.version, snapshot });
+    return snapshot;
+  };
+
   const buildSnapshot = (): BatchSnapshot => {
-    const uploads = states.map(snapshotUpload);
+    const uploads = states.map(cachedSnapshot);
     const total = uploads.reduce((sum, upload) => sum + upload.progress.total, 0);
     const loaded = uploads.reduce((sum, upload) => sum + upload.progress.loaded, 0);
     return Object.freeze({
@@ -147,8 +162,16 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
 
   const observable = createObservable(buildSnapshot);
 
-  const activeUploads = (): number =>
-    states.filter((state) => ["opening", "uploading", "completing"].includes(state.status)).length;
+  /**
+   * Record that an Upload changed. The per-Upload snapshot cache is keyed on
+   * `version`, so every mutation must come through here — bumping the version
+   * anywhere else, or invalidating without bumping it, silently serves a stale
+   * snapshot.
+   */
+  const touch = (state: UploadState): void => {
+    state.version += 1;
+    observable.invalidate();
+  };
 
   const persist = async (state: UploadState): Promise<void> => {
     if (store === null || state.key === null || state.uploadId === null) return;
@@ -164,8 +187,7 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     transport: options.transport,
     settings,
     budget,
-    activeUploads,
-    onChange: observable.invalidate,
+    onChange: touch,
     onPartLanded: (uploadId, partNumber) =>
       observable.emit("part:landed", { uploadId, partNumber }),
     onRetrying: (uploadId, partNumber, attempt, delayMs) =>
@@ -221,12 +243,12 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
       if (intent === "cancel") {
         state.status = "cancelled";
         state.error = null;
-        observable.invalidate();
+        touch(state);
         announce(state);
       } else if (state.status === "pending") {
         // Pausing a failed Upload leaves it failed; there is nothing to defer.
         state.status = "paused";
-        observable.invalidate();
+        touch(state);
         announce(state);
       }
     }

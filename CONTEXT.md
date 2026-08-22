@@ -40,8 +40,7 @@ each Upload within it still succeeds, fails, and is Resumed on its own.
 
 ### Connection Budget
 
-The ceiling on how many Parts may be in flight across the whole Batch at once, and
-the rule for dividing it between Uploads.
+The ceiling on how many Parts may be in flight across the whole Batch at once.
 
 It exists because browsers cap simultaneous connections to one host. Exceeding the
 cap does not fail loudly — the surplus requests queue beneath the network layer,

@@ -302,8 +302,7 @@ interface Transport {
 - Batch is the only unit of work; a single file is a Batch of one. There is no separate
   single-file controller. The single-file path must remain free of batch boilerplate.
 - The Connection Budget is enforced across the whole Batch, not per Upload, because the
-  browser's cap is per host. Each Upload receives a share that shrinks as more Uploads
-  become active. The allocation rule is exported so adopters can reason about it.
+  browser's cap is per host. A single FIFO queue serves every Upload.
 - The five verbs — Attempt, Retry, Resume, Cancel, Pause — are distinct and are never
   conflated in API names, states, events or documentation.
 

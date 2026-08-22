@@ -1,19 +1,14 @@
+// The public surface, kept deliberately small: every export here is a promise
+// to keep it working. Internals (part planning, the semaphore, backoff maths,
+// fingerprint comparison) are reachable from source paths for tests, but are
+// not part of the contract.
+
 export { createBatch } from "./batch.js";
-export { backoffDelay } from "./backoff.js";
-export { defaultClassifier } from "./classify.js";
-export { UploadError, MISSING_ETAG_MESSAGE } from "./errors.js";
-export { planParts } from "./plan.js";
-export { browserPlatform } from "./platform/browser.js";
-export { createSemaphore, partConcurrencyFor } from "./semaphore.js";
-export { assertFingerprint, fingerprintMismatch } from "./fingerprint.js";
 export { createResumedBatch, listResumable } from "./resume.js";
-export {
-  createIndexedDbStore,
-  createMemoryStore,
-  DEFAULT_RECORD_TTL_MS,
-  isStale,
-  scopeStore,
-} from "./store.js";
+export { browserPlatform } from "./platform/browser.js";
+export { createIndexedDbStore, createMemoryStore, scopeStore } from "./store.js";
+export { defaultClassifier } from "./classify.js";
+export { UploadError } from "./errors.js";
 
 export type { Classifier, ClassifyContext, RetryVerdict } from "./classify.js";
 export type { FingerprintOptions } from "./fingerprint.js";
@@ -25,13 +20,11 @@ export type {
   ResumeSpec,
 } from "./resume.js";
 export type { RecordStore, UploadRecord } from "./store.js";
-export type { Semaphore } from "./semaphore.js";
 export type {
   BatchController,
   BatchEvents,
   BatchFile,
   BatchOptions,
-  UploadInput,
   BatchSnapshot,
   BatchStatus,
   CompletedPart,
@@ -50,6 +43,7 @@ export type {
   Transport,
   UploadErrorCode,
   UploadErrorInfo,
+  UploadInput,
   UploadSnapshot,
   UploadStatus,
   UploadTuning,

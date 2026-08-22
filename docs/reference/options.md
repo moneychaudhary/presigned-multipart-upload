@@ -80,9 +80,9 @@ Parts in flight across the **whole batch**, not per upload.
 
 Browsers cap simultaneous connections per host — six in Chrome and Firefox.
 Exceeding it does not fail loudly: the surplus queues below the network layer
-where it reports no progress and can time out having never been sent. Each
-upload's share shrinks as more become active, which is what keeps every part the
-library thinks is in flight actually on the wire.
+where it reports no progress and can time out having never been sent. One queue
+serves the whole batch, so every part the library believes is in flight really is
+on the wire, however many files you hand it.
 
 ## Retry
 

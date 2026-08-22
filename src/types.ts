@@ -50,7 +50,8 @@ export interface Platform {
   random: () => number;
   isOnline: () => boolean;
   onOnline: (listener: () => void) => () => void;
-  files: PlatformFiles;
+  /** Only needed for Durable Resume via a File Handle. */
+  files?: PlatformFiles;
 }
 
 export interface ResumeContext {
