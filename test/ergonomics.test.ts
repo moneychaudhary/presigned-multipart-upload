@@ -207,11 +207,11 @@ describe("file(), for the common case of one file", () => {
 
     await batch.start();
 
-    expect(batch.file().progress.percent).toBe(100);
-    expect(batch.file().file.name).toBe("clip.mov");
+    expect(batch.getSnapshot().file?.progress.percent).toBe(100);
+    expect(batch.getSnapshot().file?.file.name).toBe("clip.mov");
   });
 
-  it("refuses when the Batch holds more than one", async () => {
+  it("is null when the Batch holds more than one", async () => {
     const batch = createBatch({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport: createFakeTransport(),
@@ -220,27 +220,25 @@ describe("file(), for the common case of one file", () => {
       provider: { minPartSize: 1 },
     });
 
-    expect(() => batch.file()).toThrow(UploadError);
+    expect(batch.getSnapshot().file).toBeNull();
   });
 });
 
-describe("useUpload built from options", () => {
-  it("creates the Batch itself and keeps it across renders", async () => {
-    const files = [makeFile(25 * KB)];
+describe("useUpload", () => {
+  it("holds one Batch across renders and Opens exactly once", async () => {
     const transport = createFakeTransport();
-    const platform = createFakePlatform();
+    const controller = createBatch({
+      files: [makeFile(25 * KB)],
+      transport,
+      platform: createFakePlatform(),
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+    });
 
     let seen: ReturnType<typeof useUpload> | null = null;
 
     const View = (): React.ReactElement => {
-      // No useMemo: forgetting it is the mistake this overload removes.
-      seen = useUpload({
-        files,
-        transport,
-        platform,
-        partSize: 10 * KB,
-        provider: { minPartSize: 1 },
-      });
+      seen = useUpload(controller);
       return React.createElement("div", null, seen.snapshot.status);
     };
 
@@ -255,22 +253,21 @@ describe("useUpload built from options", () => {
     });
 
     expect(screen.getByText("succeeded")).toBeTruthy();
-    // One Batch throughout, so exactly one Opening happened.
     expect(transport.state.opens).toHaveLength(1);
   });
 
   it("exposes the sole file directly", async () => {
-    const files = [makeFile(25 * KB)];
+    const controller = createBatch({
+      files: [makeFile(25 * KB)],
+      transport: createFakeTransport(),
+      platform: createFakePlatform(),
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+    });
     let seen: ReturnType<typeof useUpload> | null = null;
 
     const View = (): React.ReactElement => {
-      seen = useUpload({
-        files,
-        transport: createFakeTransport(),
-        platform: createFakePlatform(),
-        partSize: 10 * KB,
-        provider: { minPartSize: 1 },
-      });
+      seen = useUpload(controller);
       return React.createElement("div");
     };
 

@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
-import { createBatch } from "./batch.js";
-import type {
-  BatchController,
-  BatchEvents,
-  BatchOptions,
-  BatchSnapshot,
-  EventName,
-} from "./types.js";
+import type { BatchController, BatchEvents, BatchSnapshot, EventName } from "./types.js";
 
 export interface UseUploadResult {
   snapshot: BatchSnapshot;
   /** The sole Upload, for the common case of one file. Null when not exactly one. */
-  file: BatchSnapshot["uploads"][number] | null;
+  file: BatchSnapshot["file"];
   batch: BatchController;
   start: BatchController["start"];
   pause: BatchController["pause"];
@@ -20,34 +13,26 @@ export interface UseUploadResult {
   cancel: BatchController["cancel"];
 }
 
-const isController = (source: BatchController | BatchOptions): source is BatchController =>
-  "subscribe" in source;
-
 /**
  * Bind a Batch to React.
  *
- * Accepts either an existing controller or the options to build one. Passing
- * options is the ergonomic path: `createBatch` in a render body without
- * `useMemo` builds a new Batch every render and nothing ever finishes, and that
- * mistake is easy to make and hard to see. Here the controller is created once
- * and kept until `files` changes.
+ * Takes a controller, as the Vue and Angular Adapters do. It used to also accept
+ * the options and build the Batch itself, which read as the ergonomic path and
+ * was not one: the natural call passes an array literal for `files`, whose
+ * identity is fresh every render, so the Batch was rebuilt every render — the
+ * exact mistake the overload existed to prevent. It only behaved if the caller
+ * had already hoisted `files` to a stable reference, which is the discipline
+ * `useMemo` asks for anyway. When the key did change, the previous controller
+ * was dropped with no Pause and no Cancel, leaving requests in flight holding
+ * Connection Budget permits nothing could release; and every option but `files`
+ * was frozen at first render. Deciding when a Batch is born and dies is
+ * behaviour, and CONTEXT.md puts behaviour in the Core.
  *
  * useSyncExternalStore is the right primitive underneath: the Core already
  * holds one snapshot whose identity changes only when something changed, so
  * React re-renders when the upload moves and not otherwise.
  */
-export const useUpload = (source: BatchController | BatchOptions): UseUploadResult => {
-  const held = useRef<{ key: unknown; controller: BatchController } | null>(null);
-  const key = isController(source) ? source : source.files;
-
-  if (held.current === null || held.current.key !== key) {
-    held.current = {
-      key,
-      controller: isController(source) ? source : createBatch(source),
-    };
-  }
-  const controller = held.current.controller;
-
+export const useUpload = (controller: BatchController): UseUploadResult => {
   const snapshot = useSyncExternalStore(
     useCallback((onStoreChange: () => void) => controller.subscribe(onStoreChange), [controller]),
     controller.getSnapshot,
@@ -56,7 +41,7 @@ export const useUpload = (source: BatchController | BatchOptions): UseUploadResu
 
   return {
     snapshot,
-    file: snapshot.uploads.length === 1 ? snapshot.uploads[0]! : null,
+    file: snapshot.file,
     batch: controller,
     start: controller.start,
     pause: controller.pause,

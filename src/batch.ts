@@ -179,6 +179,7 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
       status: deriveBatchStatus(uploads),
       progress: progressOf(loaded, total),
       uploads: Object.freeze(uploads) as UploadSnapshot[],
+      file: uploads.length === 1 ? uploads[0]! : null,
     });
   };
 
@@ -394,23 +395,11 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
   // a caller who only asked for a Batch.
   void attemptStore("drop stale Records", purgeStale);
 
-  const file = (): UploadSnapshot => {
-    const uploads = observable.read().uploads;
-    if (uploads.length !== 1) {
-      throw uploadError(
-        "NOT_RESUMABLE",
-        `file() is for a Batch of exactly one Upload; this Batch holds ${uploads.length}. Use getSnapshot().uploads.`,
-      );
-    }
-    return uploads[0]!;
-  };
-
   return {
     start,
     resume,
     pause,
     cancel,
-    file,
     getSnapshot: observable.read,
     subscribe: observable.subscribe,
     on: observable.on,

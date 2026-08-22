@@ -11,10 +11,13 @@ React is an optional peer dependency — importing the core never pulls it in.
 Pass the options and the hook owns the batch — there is no `useMemo` to forget:
 
 ```tsx
+import { useMemo } from "react";
+import { createBatch } from "presigned-multipart-upload";
 import { useUpload } from "presigned-multipart-upload/react";
 
 const Uploader = ({ files }: { files: File[] }) => {
-  const { snapshot, file, start, pause, resume, cancel } = useUpload({ files, transport });
+  const batch = useMemo(() => createBatch({ files, transport }), [files]);
+  const { snapshot, file, start, pause, resume, cancel } = useUpload(batch);
 
   return (
     <div>
@@ -45,11 +48,19 @@ immutable snapshot whose identity changes only when something changed, which is
 exactly what that primitive wants — so the component re-renders when the upload
 moves and not otherwise.
 
-`useUpload` also accepts an existing controller if you need to own it yourself —
-`useUpload(batch)` — and returns it as `batch` either way.
+`useUpload` takes a controller, as the Vue and Angular bindings do, and returns
+it as `batch`. Own the batch yourself with `useMemo` — keyed on whatever makes a
+*new* upload, usually the file selection.
+
+The hook deliberately does not build the batch for you. It used to, and the
+natural call passed an array literal for `files`, whose identity is fresh on
+every render — so it rebuilt the batch every render, which is the exact mistake
+it existed to prevent. Deciding when a batch is born and dies is your call.
 
 `file` is the sole upload's snapshot when the batch holds exactly one, or `null`
 otherwise, which saves indexing into `snapshot.uploads[0]` for the common case.
+It comes straight off `snapshot.file`, so every binding — and Svelte, which needs
+none — has it.
 
 ## `useUploadEvent`
 

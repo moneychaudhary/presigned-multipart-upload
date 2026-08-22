@@ -1,6 +1,6 @@
 import { backoffDelay } from "./backoff.js";
 import type { Classifier } from "./classify.js";
-import { MISSING_ETAG_MESSAGE, UploadError, toErrorInfo, uploadError } from "./errors.js";
+import { MISSING_ETAG_MESSAGE, UploadError, toErrorInfo, uploadError, wrap } from "./errors.js";
 import { planParts } from "./plan.js";
 import type { Semaphore } from "./semaphore.js";
 import { createPartUrls, type PartUrl, type PartUrls, type UrlMinter } from "./urls.js";
@@ -102,6 +102,9 @@ export const createUploadState = (
   partSize: 0,
 });
 
+const TERMINAL: UploadStatus[] = ["succeeded", "cancelled"];
+export const isTerminal = (state: UploadState): boolean => TERMINAL.includes(state.status);
+
 /**
  * Whether a Resume would have anything to do.
  *
@@ -110,15 +113,27 @@ export const createUploadState = (
  * finalising again — and treating it as finished would strand the object
  * unfinalised with no way back.
  *
- * Parts being planned at all is the real test: an Upload rejected before
- * planning (an empty file, too many Parts) would fail identically on a Resume,
- * so it is not resumable.
+ * Nor is it keyed on `status`. That clause cost more than it bought: an Upload
+ * Paused before it ever ran has no planned Parts, so `resume()` used to accept
+ * it, do nothing, and report success — while CONTEXT.md promises a Paused Upload
+ * can be Resumed. And the Resume path had to fabricate a `failed` status with a
+ * fictional error to get past it, which surfaced on the snapshot as a red banner
+ * on an Upload that was fine.
+ *
+ * What is left: Pause is always takeable back up, a failure is takeable back up
+ * once Parts exist to take up, and nothing else is. An Upload that never started
+ * is not "resumable" — `start()` is its verb.
  */
-export const isResumable = (state: UploadState): boolean =>
-  (state.status === "failed" || state.status === "paused") && state.parts.length > 0;
-
-const TERMINAL: UploadStatus[] = ["succeeded", "cancelled"];
-export const isTerminal = (state: UploadState): boolean => TERMINAL.includes(state.status);
+export const isResumable = (state: UploadState): boolean => {
+  if (isTerminal(state)) return false;
+  // Pause is a decision to defer, never to discard, so it is always takeable
+  // back up — including before any Part was planned.
+  if (state.status === "paused") return true;
+  // A failure at planning would fail identically on a Resume. Planned Parts are
+  // what distinguish it from a failure while running.
+  if (state.status === "failed") return state.parts.length > 0;
+  return false;
+};
 
 const waitForOnline = (platform: Platform, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
@@ -233,8 +248,15 @@ const createUrlSupply = (state: UploadState, deps: UploadDeps, seed: string[]): 
   };
 
   const openMinter: UrlMinter = async () => {
-    const urls = await openUpload(state, deps);
-    return Object.fromEntries(urls.map((url, index) => [index + 1, url]));
+    try {
+      const urls = await openUpload(state, deps);
+      return Object.fromEntries(urls.map((url, index) => [index + 1, url]));
+    } catch (error) {
+      // Attributed here so a Refresh mid-flight reports the same cause as the
+      // Opening that starts a run. It used to escape unwrapped and arrive as a
+      // send failure, which is not what went wrong.
+      throw wrap("TRANSPORT_OPEN_FAILED", "Opening the Upload failed", error);
+    }
   };
 
   const signs = transport.signParts !== undefined;
@@ -488,11 +510,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   try {
     urls = createUrlSupply(state, deps, await openUpload(state, deps));
   } catch (error) {
-    settle(
-      error instanceof UploadError
-        ? error
-        : uploadError("TRANSPORT_OPEN_FAILED", `Opening the Upload failed: ${String(error)}`),
-    );
+    settle(wrap("TRANSPORT_OPEN_FAILED", "Opening the Upload failed", error));
     return;
   }
 
@@ -556,7 +574,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
       parts,
     });
   } catch (error) {
-    settle(uploadError("TRANSPORT_COMPLETE_FAILED", `Finalising the Upload failed: ${String(error)}`));
+    settle(wrap("TRANSPORT_COMPLETE_FAILED", "Finalising the Upload failed", error));
     return;
   }
 

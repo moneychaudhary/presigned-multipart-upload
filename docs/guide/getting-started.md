@@ -150,8 +150,8 @@ upload, and reach it with `file()` rather than indexing:
 const batch = createBatch({ files: [file], transport });
 await batch.start();
 
-batch.file().progress.percent;   // the sole upload
-batch.file().status;
+snapshot.file?.progress.percent; // the sole upload, or null
+snapshot.file?.status;
 ```
 
 `file()` throws if the batch holds anything other than exactly one upload.

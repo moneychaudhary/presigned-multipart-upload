@@ -151,10 +151,14 @@ export const createResumedBatch = async (
       part.loaded = part.size;
     }
 
-    // "failed" is what makes the Upload resumable to the controller; nothing
-    // about the previous session's ending is knowable from here.
-    state.status = "failed";
-    state.error = { code: "NOT_RESUMABLE", message: "Interrupted by an earlier page session." };
+    // Paused, not failed. Nothing about the previous session's ending is
+    // knowable from here, and Pause is exactly what this is: work deferred,
+    // waiting to be taken back up. It used to be set to "failed" carrying a
+    // fictional NOT_RESUMABLE, purely to satisfy a resumability test that keyed
+    // on status — which showed an adopter a red error banner on an Upload that
+    // was perfectly fine.
+    state.status = "paused";
+    state.error = null;
     seed.push(state);
   }
 

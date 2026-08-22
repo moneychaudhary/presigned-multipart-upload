@@ -59,7 +59,7 @@ export const httpTransport = (options: HttpTransportOptions): Transport => {
 
     if (!response.ok) {
       throw uploadError(
-        "SEND_FAILED",
+        "TRANSPORT_REQUEST_FAILED",
         `${url} responded ${response.status} ${response.statusText}`,
       );
     }

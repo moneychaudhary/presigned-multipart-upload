@@ -90,8 +90,8 @@ sole upload with `file()`:
 const batch = createBatch({ files: [file], transport });
 await batch.start();
 
-batch.file().progress.percent;
-batch.file().status;
+snapshot.file?.progress.percent;
+snapshot.file?.status;
 ```
 
 ---
@@ -658,14 +658,17 @@ works perfectly on its own.
 ### React
 
 ```tsx
+import { useMemo } from "react";
+import { createBatch, httpTransport } from "presigned-multipart-upload";
 import { useUpload } from "presigned-multipart-upload/react";
 
 const Uploader = ({ files }: { files: File[] }) => {
-  // Pass options and the hook owns the batch — no useMemo to forget.
-  const { snapshot, file, start, pause, resume, cancel } = useUpload({
-    files,
-    transport: httpTransport({ baseUrl: "/api/uploads" }),
-  });
+  // You own the batch. Key the memo on whatever makes a *new* upload.
+  const batch = useMemo(
+    () => createBatch({ files, transport: httpTransport({ baseUrl: "/api/uploads" }) }),
+    [files],
+  );
+  const { snapshot, file, start, pause, resume, cancel } = useUpload(batch);
 
   return (
     <>

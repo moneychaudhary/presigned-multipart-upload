@@ -162,7 +162,11 @@ export type UploadErrorCode =
   | "NOT_RESUMABLE"
   | "FINGERPRINT_MISMATCH"
   | "FILE_REQUIRED"
-  | "SEND_FAILED";
+  | "SEND_FAILED"
+  /** A request to the application's own API failed, rather than to storage. */
+  | "TRANSPORT_REQUEST_FAILED"
+  /** Nothing that understood the failure attributed it. */
+  | "UNKNOWN";
 
 export interface UploadErrorInfo {
   code: UploadErrorCode;
@@ -204,6 +208,14 @@ export interface BatchSnapshot {
   status: BatchStatus;
   progress: Progress;
   uploads: UploadSnapshot[];
+  /**
+   * The sole Upload, for the common case of one file; null for any other count.
+   *
+   * Derived here rather than in each Adapter, so every framework binding — and
+   * Svelte, which needs no binding — gets it for nothing and none of them has to
+   * decide what "not exactly one" means.
+   */
+  file: UploadSnapshot | null;
 }
 
 export interface BatchEvents {
@@ -325,11 +337,6 @@ export interface BatchController {
   pause: (uploadId?: string) => Promise<BatchSnapshot>;
   /** Discard. Tears the Upload down at the provider; terminal. */
   cancel: (uploadId?: string) => Promise<BatchSnapshot>;
-  /**
-   * The sole Upload's snapshot, for the common case of one file. Throws when
-   * the Batch holds anything other than exactly one.
-   */
-  file: () => UploadSnapshot;
   getSnapshot: () => BatchSnapshot;
   subscribe: (listener: (snapshot: BatchSnapshot) => void) => () => void;
   on: <T extends EventName>(type: T, handler: (payload: BatchEvents[T]) => void) => () => void;
