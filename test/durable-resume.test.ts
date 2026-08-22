@@ -12,6 +12,7 @@ import { fingerprintMismatch } from "../src/fingerprint.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle, type FakePlatformOptions } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
+import { flush } from "./fakes/async.js";
 
 /** Parts from 3 onward fail, leaving a half-finished Upload in the store. */
 const failLate = (extra: FakePlatformOptions = {}) =>
@@ -54,8 +55,7 @@ describe("keeping an Upload Record", () => {
     });
 
     const run = batch.start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     const mid = await store.get("upload-1");
     expect(mid?.landed.length).toBeGreaterThan(0);
@@ -111,7 +111,7 @@ describe("keeping an Upload Record", () => {
     });
 
     const run = batch.start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
     await batch.cancel();
     await run;
 

@@ -1,9 +1,9 @@
-import { createBatch } from "./batch.js";
+import { createSeededBatch } from "./batch.js";
 import { uploadError } from "./errors.js";
 import { assertFingerprint } from "./fingerprint.js";
-import { planParts } from "./plan.js";
+import { sliceParts } from "./plan.js";
 import { browserPlatform } from "./platform/browser.js";
-import { isStale, type RecordStore, type UploadRecord } from "./store.js";
+import { DEFAULT_RECORD_TTL_MS, isStale, type RecordStore, type UploadRecord } from "./store.js";
 import { createUploadState, describeFile, type UploadState } from "./upload.js";
 import type { BatchController, BatchOptions, FileDescriptor, Platform } from "./types.js";
 
@@ -36,7 +36,6 @@ export interface ListResumableOptions {
   recordTtlMs?: number;
 }
 
-const DEFAULT_TTL = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Find Uploads left unfinished by an earlier page session.
@@ -47,7 +46,7 @@ const DEFAULT_TTL = 7 * 24 * 60 * 60 * 1000;
 export const listResumable = async ({
   store,
   platform = browserPlatform(),
-  recordTtlMs = DEFAULT_TTL,
+  recordTtlMs = DEFAULT_RECORD_TTL_MS,
 }: ListResumableOptions): Promise<ResumableUpload[]> => {
   const now = platform.now();
   const records = await store.list();
@@ -55,7 +54,11 @@ export const listResumable = async ({
 
   for (const record of records) {
     if (isStale(record, now, recordTtlMs)) {
-      await store.remove(record.id);
+      // Housekeeping. A store that cannot drop a stale Record must not stop the
+      // caller learning about the fresh ones.
+      await store.remove(record.id).catch((error: unknown) => {
+        console.warn("presigned-multipart-upload: the Record Store failed to drop a stale Record", error);
+      });
       continue;
     }
     fresh.push(record);
@@ -126,16 +129,17 @@ export const createResumedBatch = async (
     state.key = record.key;
     state.uploadId = record.uploadId;
     state.partSize = record.partSize;
-    state.parts = planParts({
-      size: record.file.size,
-      partSize: record.partSize,
-      // The Record already holds a plan that the provider accepted, so the
-      // limits are not re-litigated here.
-      minPartSize: 1,
-      maxParts: Number.MAX_SAFE_INTEGER,
-      maxPartSize: Number.MAX_SAFE_INTEGER,
-      maxObjectSize: Number.MAX_SAFE_INTEGER,
-    }).parts;
+    // The Record already holds a plan the provider accepted, so the limits are
+    // not re-litigated — only the byte ranges are recut, from the size the first
+    // run used. Cutting them any other way would misalign every Part.
+    state.parts = sliceParts(record.file.size, record.partSize);
+
+    if (state.parts.length !== record.partCount) {
+      throw uploadError(
+        "NOT_RESUMABLE",
+        `Upload Record ${record.id} describes ${record.partCount} Parts but its size and Part size give ${state.parts.length}.`,
+      );
+    }
 
     // Mark what already landed so the Resume sends only what is missing.
     const landed = new Map(record.landed.map((part) => [part.partNumber, part.eTag]));
@@ -154,7 +158,7 @@ export const createResumedBatch = async (
     seed.push(state);
   }
 
-  return createBatch({ ...options, files: [], seed, partSize: options.partSize });
+  return createSeededBatch({ ...options, files: [], seed, partSize: options.partSize });
 };
 
 const recoverFile = async (

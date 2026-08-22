@@ -98,7 +98,9 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
       case "status":
         throw namedError("HttpError", `status ${outcome.status}`, { status: outcome.status });
       default:
-        throw new Error(`unreachable outcome ${JSON.stringify(outcome)}`);
+        throw new Error(
+          `releaseHung was given ${JSON.stringify(outcome)}; a hung send must be settled with a real outcome`,
+        );
     }
   };
 
@@ -124,6 +126,12 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
 
     try {
       if (args.signal.aborted) throw abortError();
+
+      // Yield before settling. A real send always crosses at least one turn of
+      // the event loop, and without that every outcome but "hang" settles
+      // synchronously — which would make peakInFlight read 1 at any
+      // concurrency, and the Connection Budget unobservable.
+      await Promise.resolve();
 
       let outcome = script(call);
 

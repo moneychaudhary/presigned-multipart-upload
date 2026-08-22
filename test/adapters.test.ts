@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createAngularUpload } from "../src/angular.js";
 import { createBatch } from "../src/index.js";
 import { useUpload, useUploadEvent } from "../src/react.js";
-import type { BatchController } from "../src/types.js";
+import type { BatchController } from "../src/index.js";
 import { useUpload as useVueUpload } from "../src/vue.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";

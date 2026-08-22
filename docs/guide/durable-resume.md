@@ -155,6 +155,34 @@ upload it describes offers a resume that will fail at the provider.
 Records are removed as soon as an upload succeeds or is cancelled, so finished
 work never appears resumable.
 
+## When the store itself fails
+
+Browser storage runs out. A private-mode tab refuses to persist. Someone clears
+site data mid-upload. Any of the four `RecordStore` methods may reject, and
+`createIndexedDbStore` will.
+
+**A failing store costs you durable resume and nothing else.** The upload in
+flight is not failed, its siblings are not abandoned, and the parts that already
+landed still land. The failure is reported to the console rather than swallowed,
+so it stays diagnosable, and a record that could not be written simply is not
+there to resume from later.
+
+The exception is deliberate: `listResumable` and `createResumedBatch` reject if
+the store cannot be read. You asked to read records; you are told when that
+fails.
+
+```ts
+// Nothing to catch here — a store failure cannot fail this.
+await createBatch({ files, transport, store }).start();
+
+// This one can reject if the store is unreadable.
+try {
+  const interrupted = await listResumable({ store });
+} catch {
+  // Offer a fresh upload instead.
+}
+```
+
 ## Shared devices
 
 By default every record in the store is visible to whoever opens the page. On a

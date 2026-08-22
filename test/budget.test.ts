@@ -32,15 +32,6 @@ describe("enforcing the Connection Budget", () => {
       platform.releaseHung(call.uploadId, call.partNumber, { kind: "ok" });
     }
     await flush();
-    for (const call of [...platform.state.calls]) {
-      if (platform.state.calls.filter((c) => c.partNumber === call.partNumber).length > 0) {
-        try {
-          platform.releaseHung(call.uploadId, call.partNumber, { kind: "ok" });
-        } catch {
-          // already released
-        }
-      }
-    }
 
     await batch.cancel();
     await run;
@@ -56,7 +47,7 @@ describe("enforcing the Connection Budget", () => {
     const run = batch.start();
     await flush();
 
-    expect(platform.state.peakInFlight).toBeLessThanOrEqual(4);
+    expect(platform.state.peakInFlight).toBe(4);
 
     await batch.cancel();
     await run;
@@ -106,5 +97,33 @@ describe("enforcing the Connection Budget", () => {
     expect(snapshot.progress.total).toBe(40 * KB);
     expect(snapshot.progress.loaded).toBe(40 * KB);
     expect(snapshot.progress.percent).toBe(100);
+  });
+});
+
+describe("the Connection Budget under a release/acquire race", () => {
+  it("never exceeds the limit when a slot frees while others are queueing", async () => {
+    const platform = createFakePlatform({
+      // Every Part yields, so releases and acquires genuinely interleave.
+      script: ({ partNumber }) => (partNumber % 2 === 0 ? { kind: "network" } : { kind: "ok" }),
+    });
+    const transport = createFakeTransport();
+
+    const batch = createBatch({
+      files: [
+        makeFile(80 * KB, "a.mov"),
+        makeFile(80 * KB, "b.mov"),
+        makeFile(80 * KB, "c.mov"),
+      ],
+      transport,
+      platform,
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+      concurrency: 3,
+      maxRetries: 4,
+    });
+
+    await batch.start();
+
+    expect(platform.state.peakInFlight).toBeLessThanOrEqual(3);
   });
 });

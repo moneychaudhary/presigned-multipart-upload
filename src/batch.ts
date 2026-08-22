@@ -111,12 +111,12 @@ const toRecord = (state: UploadState, now: number): UploadRecord => ({
 const toInput = (entry: BatchFile): { file: File; handle: unknown } =>
   entry instanceof File ? { file: entry, handle: null } : { file: entry.file, handle: entry.handle ?? null };
 
-export interface BatchInternalOptions extends BatchOptions {
+interface BatchInternalOptions extends BatchOptions {
   /** Pre-built states, used when taking up Uploads recovered from the store. */
   seed?: UploadState[];
 }
 
-export const createBatch = (options: BatchInternalOptions): BatchController => {
+const buildBatch = (options: BatchInternalOptions): BatchController => {
   const platform = options.platform ?? browserPlatform();
   const store = options.store ?? null;
   const recordTtlMs = options.recordTtlMs ?? DEFAULT_RECORD_TTL_MS;
@@ -199,6 +199,28 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
   // only the Parts that landed inside it, and a Resume re-sends those.
   const lastWriteAt = new Map<string, number>();
 
+  /**
+   * Run one Record Store call, best-effort.
+   *
+   * The store is documented as droppable — omit it and you lose Durable Resume.
+   * A store that *rejects* must therefore lose the same thing and no more. It
+   * used to lose the Upload instead: a rejecting `put` on the Part-landed path
+   * was handed to the classifier, came back "retry", and re-sent a Part whose
+   * ETag was already in hand until the Retry budget ran out; on the other paths
+   * it escaped `runUpload` and took every sibling Upload down with it. Quota
+   * exceeded on a store holding File Handles is the realistic trigger.
+   *
+   * Reported rather than swallowed, so it stays diagnosable — the same bargain
+   * `observable.deliver` strikes with a subscriber that throws.
+   */
+  const attemptStore = async (what: string, run: () => Promise<unknown>): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      console.warn(`presigned-multipart-upload: the Record Store failed to ${what}`, error);
+    }
+  };
+
   const persist = async (
     state: UploadState,
     occasion: "milestone" | "progress" = "milestone",
@@ -207,7 +229,7 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
 
     if (state.status === "succeeded" || state.status === "cancelled") {
       lastWriteAt.delete(state.id);
-      await store.remove(state.id);
+      await attemptStore("remove a Record", () => store.remove(state.id));
       return;
     }
 
@@ -219,7 +241,7 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     if (coalesce) return;
 
     lastWriteAt.set(state.id, now);
-    await store.put(toRecord(state, now));
+    await attemptStore("write a Record", () => store.put(toRecord(state, now)));
   };
 
   const deps: UploadDeps = {
@@ -368,7 +390,9 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     );
   };
 
-  void purgeStale();
+  // Housekeeping, fired and forgotten at construction: it must not reject into
+  // a caller who only asked for a Batch.
+  void attemptStore("drop stale Records", purgeStale);
 
   const file = (): UploadSnapshot => {
     const uploads = observable.read().uploads;
@@ -392,3 +416,16 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     on: observable.on,
   };
 };
+
+/**
+ * Build a Batch from Upload States that already exist.
+ *
+ * Internal, and deliberately a different symbol from `createBatch`: typing the
+ * public constructor with the internal options put `UploadState` — `intent`,
+ * `controller`, `version` — into the shipped declarations as a reachable public
+ * type, which `index.ts` promises to keep working and has no intention of.
+ */
+export const createSeededBatch = (options: BatchInternalOptions): BatchController =>
+  buildBatch(options);
+
+export const createBatch = (options: BatchOptions): BatchController => buildBatch(options);

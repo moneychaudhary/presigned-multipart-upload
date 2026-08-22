@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { autoPartSize, planParts } from "../src/plan.js";
-import { createBatch } from "../src/batch.js";
-import { createMemoryStore } from "../src/store.js";
-import { PROVIDERS, type UploadError } from "../src/index.js";
+import { createBatch, createMemoryStore, PROVIDERS, type UploadError } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";

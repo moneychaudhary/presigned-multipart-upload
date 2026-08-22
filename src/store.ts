@@ -27,6 +27,16 @@ export interface UploadRecord {
  * device.
  */
 export interface RecordStore {
+  /**
+   * Any of these may reject — browser storage runs out, a private-mode tab
+   * refuses to persist, a user clears site data mid-upload.
+   *
+   * A rejection costs Durable Resume and nothing else. The Core reports it and
+   * carries on: an Upload in flight is not failed, its siblings are not
+   * abandoned, and a Record that could not be written simply is not there to
+   * Resume from later. `listResumable` and `createResumedBatch` are the
+   * exception — a caller asking to read Records is told when that fails.
+   */
   put: (record: UploadRecord) => Promise<void>;
   get: (id: string) => Promise<UploadRecord | null>;
   list: () => Promise<UploadRecord[]>;

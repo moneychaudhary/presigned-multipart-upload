@@ -4,7 +4,7 @@ import type { PartSnapshot } from "./types.js";
 const MIB = 1024 * 1024;
 
 /** The Part size auto-sizing settles on when the file does not force a larger one. */
-export const PREFERRED_PART_SIZE = 10 * MIB;
+const PREFERRED_PART_SIZE = 10 * MIB;
 
 export interface PlanOptions {
   size: number;
@@ -41,6 +41,29 @@ export const autoPartSize = ({
   // Whole MiB, so Part boundaries stay legible in logs and in the bucket.
   return Math.min(Math.ceil(wanted / MIB) * MIB, maxPartSize);
 };
+
+/**
+ * Cut a file into Part-sized byte ranges.
+ *
+ * Just the arithmetic — no provider limits, no choosing. A Resume wants exactly
+ * this and nothing else, because the size it must use was settled by the run it
+ * is taking up and is carried on the Upload Record.
+ */
+export const sliceParts = (size: number, partSize: number): PartSnapshot[] =>
+  Array.from({ length: Math.ceil(size / partSize) }, (_, index) => {
+    const start = index * partSize;
+    const end = Math.min(start + partSize, size);
+    return {
+      partNumber: index + 1,
+      start,
+      end,
+      size: end - start,
+      status: "pending" as const,
+      loaded: 0,
+      attempts: 0,
+      eTag: null,
+    };
+  });
 
 /**
  * Divide a file into Parts.
@@ -95,20 +118,5 @@ export const planParts = ({
     );
   }
 
-  const parts = Array.from({ length: partCount }, (_, index) => {
-    const start = index * resolved;
-    const end = Math.min(start + resolved, size);
-    return {
-      partNumber: index + 1,
-      start,
-      end,
-      size: end - start,
-      status: "pending" as const,
-      loaded: 0,
-      attempts: 0,
-      eTag: null,
-    };
-  });
-
-  return { partSize: resolved, parts };
+  return { partSize: resolved, parts: sliceParts(size, resolved) };
 };
