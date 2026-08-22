@@ -150,9 +150,9 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
 
   const states: UploadState[] =
     options.seed ??
-    options.files.map((entry, index) => {
+    options.files.map((entry) => {
       const { file, handle } = toInput(entry);
-      return createUploadState(`upload-${index + 1}`, file, handle);
+      return createUploadState(platform.newId(), file, handle);
     });
 
   const budget = createSemaphore(settings.concurrency);
@@ -244,6 +244,17 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
   };
 
   const drive = (state: UploadState): Promise<void> => {
+    // Join a run already under way rather than racing a second one on the same
+    // Upload State: two runs would send every Part twice, and the second would
+    // overwrite the controller the first aborts through.
+    const inFlight = running.get(state.id);
+    if (inFlight !== undefined) return inFlight;
+
+    // Terminal is terminal. A succeeded Upload has finalised its object and a
+    // cancelled one was torn down at the provider, so running either again
+    // writes Parts into an upload that is finished or gone.
+    if (isTerminal(state)) return Promise.resolve();
+
     const pending = runUpload(state, deps)
       .then(async () => {
         await persist(state);

@@ -363,11 +363,18 @@ Three verbs. The difference is between discarding work and deferring it.
 | **Resume** | — | — | Continues from what is missing |
 
 ```ts
+const { id } = batch.getSnapshot().uploads[0];
+
 await batch.pause();            // whole batch
-await batch.pause("upload-1");  // one upload, siblings keep going
+await batch.pause(id);          // one upload, siblings keep going
 await batch.cancel();
 await batch.resume();
 ```
+
+Upload ids are minted per upload rather than being positional, so they stay
+unique across batches, tabs and later page sessions — which is what stops one
+upload's resume record overwriting another's. Take them off the snapshot; never
+construct one.
 
 Cancel is **terminal**; resuming a cancelled upload is refused with
 `NOT_RESUMABLE`. An upload that already succeeded is never torn down.

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Platform, SendPartArgs, SendPartResult } from "../../src/index.js";
 
 const namedError = (name: string, message: string, extra: object = {}): Error =>
@@ -43,6 +45,7 @@ export const nodePlatform = (): Platform => ({
     return { eTag: response.headers.get("etag") };
   },
 
+  newId: () => randomUUID(),
   now: () => Date.now(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   random: () => Math.random(),

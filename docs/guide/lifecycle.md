@@ -17,7 +17,15 @@ multipart upload stays open at the provider.
 
 ```ts
 await batch.pause();            // the whole batch
-await batch.pause("upload-1");  // one upload, siblings keep going
+await batch.pause(id);          // one upload, siblings keep going
+```
+
+Upload ids come off the snapshot — `snapshot.uploads[n].id` — and are minted per
+Upload rather than being positional, so they stay unique across batches, tabs and
+later page sessions. Never construct one:
+
+```ts
+const { id } = batch.getSnapshot().uploads[0];
 ```
 
 Pausing is immediate rather than "immediate once the current 10 MiB finishes",
@@ -30,7 +38,7 @@ the provider stops charging for orphaned parts.
 
 ```ts
 await batch.cancel();
-await batch.cancel("upload-1");
+await batch.cancel(id);
 ```
 
 Cancel is **terminal**. Resuming a cancelled upload is refused with
@@ -46,7 +54,7 @@ Continues an upload that is paused or failed, from the parts that never landed.
 
 ```ts
 await batch.resume();
-await batch.resume("upload-1");
+await batch.resume(id);
 ```
 
 Resume:

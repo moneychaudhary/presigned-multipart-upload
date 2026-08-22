@@ -45,6 +45,15 @@ export interface PlatformFiles {
  */
 export interface Platform {
   sendPart: (args: SendPartArgs) => Promise<SendPartResult>;
+  /**
+   * A fresh identifier for an Upload.
+   *
+   * Must be unique across every Batch that could share a Record Store — which
+   * includes Batches in other tabs and in later page sessions. The identifier is
+   * the Upload Record's key, so a repeat silently overwrites another Upload's
+   * Record and strands its multipart upload open at the provider.
+   */
+  newId: () => string;
   now: () => number;
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   random: () => number;

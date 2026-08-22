@@ -95,6 +95,17 @@ export const browserPlatform = (): Platform => ({
       timer = setTimeout(finish, ms);
       signal?.addEventListener("abort", finish, { once: true });
     }),
+  newId: () => {
+    // randomUUID is unavailable outside a secure context, which a local dev
+    // server over http commonly is, so this cannot be the only path.
+    const source = globalThis.crypto;
+    if (typeof source?.randomUUID === "function") return source.randomUUID();
+    if (typeof source?.getRandomValues === "function") {
+      const bytes = source.getRandomValues(new Uint8Array(16));
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  },
   random: () => Math.random(),
   isOnline: () => (typeof navigator === "undefined" ? true : navigator.onLine !== false),
   onOnline: (listener) => {

@@ -53,6 +53,8 @@ export interface FakePlatformOptions {
   permissionGranted?: boolean;
   /** Fixed value for now(), so Record staleness is assertable. */
   now?: number;
+  /** Prefix for minted Upload ids. One counter per Platform, as in a real one. */
+  idPrefix?: string;
 }
 
 /** A stand-in for a FileSystemFileHandle: something that can give back a File. */
@@ -78,6 +80,7 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
   const hung = new Map<string, (outcome: ScriptedOutcome) => void>();
   const onlineListeners = new Set<() => void>();
 
+  let nextId = 0;
   let inFlight = 0;
   let online = options.online ?? true;
   let randomIndex = 0;
@@ -151,6 +154,10 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
   return {
     state,
     sendPart,
+    newId: () => {
+      nextId += 1;
+      return `${options.idPrefix ?? "upload"}-${nextId}`;
+    },
     now: () => options.now ?? 0,
     sleep: async (ms: number) => {
       state.sleeps.push(ms);
