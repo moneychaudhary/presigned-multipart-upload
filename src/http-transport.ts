@@ -1,11 +1,24 @@
 import { uploadError } from "./errors.js";
-import type { CompletedPart, FileDescriptor, OpenContext, OpenResult, Transport } from "./types.js";
+import type {
+  CompletedPart,
+  FileDescriptor,
+  OpenContext,
+  OpenResult,
+  SignPartsArgs,
+  Transport,
+} from "./types.js";
 
 export interface HttpTransportOptions {
   /** Base of your three endpoints, e.g. "/api/uploads". */
   baseUrl: string;
-  /** Appended to baseUrl. Defaults: "", "/complete", "/abort". */
-  paths?: { open?: string; complete?: string; abort?: string };
+  /**
+   * Appended to baseUrl. Defaults: "", "/complete", "/abort".
+   *
+   * `sign` has no default: supply it only if your backend can sign named Parts,
+   * and the library will then sign a window ahead instead of asking Opening for
+   * every url at once. Worth it once Uploads run to thousands of Parts.
+   */
+  paths?: { open?: string; complete?: string; abort?: string; sign?: string };
   /** Static headers, or a function called per request for a fresh token. */
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
   credentials?: RequestCredentials;
@@ -71,14 +84,45 @@ export const httpTransport = (options: HttpTransportOptions): Transport => {
       );
 
       const body = (await response.json()) as Partial<OpenResult>;
-      if (!body?.key || !body.uploadId || !Array.isArray(body.urls)) {
+      const needsUrls = options.paths?.sign === undefined;
+
+      if (!body?.key || !body.uploadId || (needsUrls && !Array.isArray(body.urls))) {
         throw uploadError(
           "TRANSPORT_OPEN_FAILED",
-          `${at(options.paths?.open, "")} must return { key, uploadId, urls }.`,
+          `${at(options.paths?.open, "")} must return { key, uploadId${needsUrls ? ", urls" : ""} }.`,
         );
       }
-      return { key: body.key, uploadId: body.uploadId, urls: body.urls };
+      return {
+        key: body.key,
+        uploadId: body.uploadId,
+        urls: Array.isArray(body.urls) ? body.urls : undefined,
+      };
     },
+
+    ...(options.paths?.sign === undefined
+      ? {}
+      : {
+          signParts: async (args: SignPartsArgs): Promise<Record<number, string>> => {
+            const url = at(options.paths?.sign, "");
+            const response = await post(
+              url,
+              { key: args.key, uploadId: args.uploadId, partNumbers: args.partNumbers },
+              args.signal,
+            );
+
+            const body = (await response.json()) as { urls?: Record<string, string> };
+            if (!body?.urls || typeof body.urls !== "object") {
+              throw uploadError(
+                "URL_MISSING",
+                `${url} must return { urls: { [partNumber]: url } }.`,
+              );
+            }
+
+            return Object.fromEntries(
+              Object.entries(body.urls).map(([key, value]) => [Number(key), value]),
+            );
+          },
+        }),
 
     complete: async (args: { key: string; uploadId: string; parts: CompletedPart[] }) =>
       post(at(options.paths?.complete, "/complete"), args),

@@ -43,6 +43,55 @@ describe("httpTransport", () => {
     expect(seen).toEqual(["/api/uploads", "/api/uploads/complete", "/api/uploads/abort"]);
   });
 
+  it("supplies no signParts unless a sign path is configured", () => {
+    const plain = httpTransport({ baseUrl: "/api/uploads", fetch: (() => {}) as never });
+    const signing = httpTransport({
+      baseUrl: "/api/uploads",
+      paths: { sign: "/sign" },
+      fetch: (() => {}) as never,
+    });
+
+    expect(plain.signParts).toBeUndefined();
+    expect(signing.signParts).toBeTypeOf("function");
+  });
+
+  it("asks the sign endpoint for the named Parts and keys the answer by number", async () => {
+    let body: unknown;
+    const transport = httpTransport({
+      baseUrl: "/api/uploads",
+      paths: { sign: "/sign" },
+      fetch: (async (_url: unknown, init: RequestInit) => {
+        body = JSON.parse(String(init.body));
+        return jsonResponse({ urls: { "7": "https://bucket/7", "8": "https://bucket/8" } });
+      }) as never,
+    });
+
+    const urls = await transport.signParts!({
+      key: "k",
+      uploadId: "u",
+      partNumbers: [7, 8],
+      signal: new AbortController().signal,
+    });
+
+    expect(body).toEqual({ key: "k", uploadId: "u", partNumbers: [7, 8] });
+    expect(urls).toEqual({ 7: "https://bucket/7", 8: "https://bucket/8" });
+  });
+
+  it("stops requiring urls from Opening once it can sign them itself", async () => {
+    const transport = httpTransport({
+      baseUrl: "/api/uploads",
+      paths: { sign: "/sign" },
+      fetch: (async () => jsonResponse({ key: "k", uploadId: "u" })) as never,
+    });
+
+    const opened = await transport.open(
+      { name: "a.mov", size: 10, type: "video/quicktime", lastModified: 1 },
+      { partCount: 2, partSize: 5, resumeFrom: undefined, signal: new AbortController().signal },
+    );
+
+    expect(opened).toEqual({ key: "k", uploadId: "u", urls: undefined });
+  });
+
   it("treats a non-2xx as a failure, which bare fetch does not", async () => {
     const transport = httpTransport({
       baseUrl: "/api/uploads",

@@ -104,7 +104,9 @@ are where authorisation, quota and object naming belong.
 
 ```ts
 interface Transport {
-  open(file, ctx): Promise<{ key: string; uploadId: string; urls: string[] }>;
+  open(file, ctx): Promise<{ key: string; uploadId: string; urls?: string[] }>;
+  // Optional; see "Very large files". Signs only the parts named.
+  signParts?({ key, uploadId, partNumbers, signal }): Promise<Record<number, string>>;
   complete({ key, uploadId, parts }): Promise<unknown>;
   abort({ key, uploadId }): Promise<unknown>;
 }
@@ -581,22 +583,42 @@ throughput. Lower `concurrency` in the same breath:
 createBatch({ files, transport, partSize: 128 * 1024 * 1024, concurrency: 2 });
 ```
 
-### Your `open` signs one URL per part
+### Sign parts on demand, not all at once
 
-This is the cost most people miss. `open` must return `partCount` URLs, and for
-a 300 GiB file that is ~9,900 of them — several megabytes of JSON, and several
-thousand signatures computed per request. Signing is local and cheap (no call to
-AWS), but it is not free, and **it happens again on every re-open**.
+This is the cost most people miss. By default `open` must return `partCount`
+URLs, and for a 300 GiB file that is ~9,900 of them — several megabytes of JSON,
+and several thousand signatures computed per request. Signing is local and cheap
+(no call to AWS), but it is not free, and **it happens again on every refresh**.
 
-If that response size matters to you, raising `partSize` is the lever: 128 MiB
-parts turn 9,910 URLs into 2,400.
+Give the Transport a fourth function and the library signs only what it is about
+to send:
+
+```ts
+const transport = httpTransport({
+  baseUrl: "/api/uploads",
+  paths: { sign: "/sign" },
+});
+```
+
+`open` then returns just `{ key, uploadId }`, and `POST /api/uploads/sign`
+receives `{ key, uploadId, partNumbers }` and returns `{ urls: { 41: "…", … } }`.
+The library keeps a window of `urlWindow` parts signed ahead (default: four times
+`concurrency`), and an expired URL costs a re-signing of the parts in flight
+rather than a re-opening of all 9,900. See
+[the backend contract](/guide/backend-contract#signing-parts-on-demand).
+
+Under a few hundred parts it is not worth the endpoint. Past a thousand, it is.
+Raising `partSize` is the other lever, and they compose: 128 MiB parts turn
+9,910 URLs into 2,400.
 
 ### It will outlive its URLs
 
 300 GiB at 100 Mbps is around seven hours; presigned URLs typically last one. The
-library handles this — a 403 on a part triggers a re-open for fresh URLs, and
-the run continues from where it was, which is exactly why `open` is called on
-two occasions. Two things on your side make it work:
+library handles this — a 403 on a part triggers a **refresh** for fresh URLs and
+the run continues from where it was. Parts in flight share their URLs' expiry, so
+five parts meeting it at once cost one refresh between them, not five. Where you
+supply `signParts` the refresh re-signs those parts; where you do not, it re-opens.
+Two things on your side make it work:
 
 - Return **fresh URLs** every time, including when `resumeFrom` is present.
   Replaying a stale list is the one way to break this.
@@ -728,6 +750,7 @@ Everything has a working default. Only `files` and `transport` are required.
 | `partTimeoutMs` | 0 | Per-attempt timeout; 0 disables. |
 | `waitWhileOffline` | `true` | Park instead of spending retries. |
 | `classify` | built-in | Replace the retry rule. |
+| `urlWindow` | `concurrency * 4` | Parts signed ahead, when the Transport supplies `signParts`. |
 | `contentType` | file's own | Sent with each part. |
 | `store` | none | Enables durable resume. |
 | `recordTtlMs` | 7 days | How long a record stays resumable. |
@@ -766,7 +789,8 @@ message text. Thrown errors are `UploadError` instances.
 | `PART_COUNT_EXCEEDED` | File needs more parts than allowed | Leave `partSize` unset, or raise it |
 | `FILE_TOO_LARGE` | Above the provider's single-object limit | Nothing to do — 5 TiB is the ceiling |
 | `EMPTY_FILE` | Zero bytes | Use an ordinary single `PUT` |
-| `URL_COUNT_MISMATCH` | Transport returned the wrong number of URLs | Fix the backend |
+| `URL_COUNT_MISMATCH` | Transport returned the wrong number of URLs, or opened a second upload on a resume | Fix the backend |
+| `URL_MISSING` | `signParts` returned no URL for a part it was asked to sign | Fix the backend |
 | `RETRIES_EXHAUSTED` | A part used its whole budget | `resume()` — nothing was discarded |
 | `SEND_FAILED` | Fatal by the classifier | Inspect the cause |
 | `TRANSPORT_OPEN_FAILED` | Your `open` rejected | Nothing to tear down |

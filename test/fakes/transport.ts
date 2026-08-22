@@ -1,4 +1,10 @@
-import type { CompletedPart, OpenContext, OpenResult, Transport } from "../../src/index.js";
+import type {
+  CompletedPart,
+  OpenContext,
+  OpenResult,
+  SignPartsArgs,
+  Transport,
+} from "../../src/index.js";
 
 export interface OpenRecord {
   fileName: string;
@@ -13,8 +19,16 @@ export interface CompleteRecord {
   parts: CompletedPart[];
 }
 
+export interface SignRecord {
+  partNumbers: number[];
+  /** Which Refresh this signing belongs to; the nth call to signParts. */
+  index: number;
+}
+
 export interface FakeTransportState {
   opens: OpenRecord[];
+  /** Every signParts call, in order. Empty unless `signsParts` was asked for. */
+  signs: SignRecord[];
   completes: CompleteRecord[];
   aborts: { key: string; uploadId: string }[];
   /** Urls handed out by the most recent Opening, in Part order. */
@@ -33,10 +47,25 @@ export interface FakeTransportOptions {
   onAbort?: (args: { key: string; uploadId: string }) => void | Promise<void>;
   /** Return fewer urls than Parts, to exercise the invalid-Transport path. */
   urlCount?: (partCount: number) => number;
+  /**
+   * Supply `signParts`, so Opening mints no urls and the library asks for them
+   * a window at a time. This is the large-Upload Transport shape.
+   */
+  signsParts?: boolean;
+  /** Omit these Part numbers from every signing, to exercise a broken backend. */
+  refuseToSign?: number[];
+  /** Called before each signing; throw to model a signing endpoint that fails. */
+  onSign?: (args: SignPartsArgs, signIndex: number) => void | Promise<void>;
 }
 
 export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTransport => {
-  const state: FakeTransportState = { opens: [], completes: [], aborts: [], lastUrls: [] };
+  const state: FakeTransportState = {
+    opens: [],
+    signs: [],
+    completes: [],
+    aborts: [],
+    lastUrls: [],
+  };
   let openIndex = 0;
 
   const prefixFor = (index: number): string => {
@@ -57,6 +86,15 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
 
     await options.onOpen?.(ctx, index);
 
+    // A Transport that signs on demand mints nothing here — Opening settles
+    // only which Upload this is.
+    if (options.signsParts) {
+      return {
+        key: ctx.resumeFrom?.key ?? `uploads/${file.name}`,
+        uploadId: ctx.resumeFrom?.uploadId ?? `upload-${index}`,
+      };
+    }
+
     const count = options.urlCount ? options.urlCount(ctx.partCount) : ctx.partCount;
     state.lastUrls = Array.from({ length: count }, (_, i) => `${prefixFor(index)}-${i + 1}`);
 
@@ -65,6 +103,23 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
       uploadId: ctx.resumeFrom?.uploadId ?? `upload-${index}`,
       urls: state.lastUrls,
     };
+  };
+
+  let signIndex = 0;
+
+  const signParts = async (args: SignPartsArgs): Promise<Record<number, string>> => {
+    const index = signIndex;
+    signIndex += 1;
+    state.signs.push({ partNumbers: [...args.partNumbers], index });
+    await options.onSign?.(args, index);
+
+    const refused = new Set(options.refuseToSign ?? []);
+    const minted: Record<number, string> = {};
+    for (const partNumber of args.partNumbers) {
+      if (refused.has(partNumber)) continue;
+      minted[partNumber] = `${prefixFor(index)}-${partNumber}`;
+    }
+    return minted;
   };
 
   const complete = async (args: {
@@ -84,5 +139,7 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
     return undefined;
   };
 
-  return { state, open, complete, abort };
+  return options.signsParts
+    ? { state, open, complete, abort, signParts }
+    : { state, open, complete, abort };
 };

@@ -56,11 +56,24 @@ single `PUT`.
 
 ### `URL_COUNT_MISMATCH`
 
-The transport returned a number of URLs that does not equal the part count.
+The transport returned a number of URLs that does not equal the part count, or —
+on a resume — opened a *different* upload from the one it was asked to take up.
 
-Too few and parts have nowhere to go; too many usually means a stale list from
-an earlier opening, which would misalign every part. Both are rejected before
-any byte is sent.
+Too few URLs and parts have nowhere to go; too many usually means a stale list
+from an earlier opening, which would misalign every part. Both are rejected
+before any byte is sent.
+
+The resume case is the more dangerous one: `open` is told `resumeFrom`, and a
+backend that creates a second multipart upload instead of returning the id it was
+given would leave the library holding ETags from one upload while finalising
+another. The key and upload id coming back are checked against the ones sent.
+
+### `URL_MISSING`
+
+`signParts` was asked to sign a set of parts and returned no URL for one of them.
+
+Return a URL for every part number you are given. Silently omitting one would
+leave a hole in the object.
 
 ## Failures in flight
 

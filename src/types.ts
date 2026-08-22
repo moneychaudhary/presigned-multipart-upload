@@ -70,8 +70,21 @@ export interface OpenContext {
 export interface OpenResult {
   key: string;
   uploadId: string;
-  /** One Presigned URL per Part, in Part order. */
-  urls: string[];
+  /**
+   * One Presigned URL per Part, in Part order.
+   *
+   * Omit when the Transport supplies `signParts`, which mints them a window at
+   * a time instead. Supplying both is allowed: these are used first.
+   */
+  urls?: string[];
+}
+
+export interface SignPartsArgs {
+  key: string;
+  uploadId: string;
+  /** The Parts about to be sent. Return a url for each; more is allowed. */
+  partNumbers: number[];
+  signal: AbortSignal;
 }
 
 export interface CompletedPart {
@@ -85,6 +98,17 @@ export interface CompletedPart {
  */
 export interface Transport {
   open: (file: FileDescriptor, ctx: OpenContext) => Promise<OpenResult>;
+  /**
+   * Mint Presigned URLs for named Parts, keyed by Part number.
+   *
+   * Optional, and worth supplying once Uploads are large enough that signing
+   * every Part up front is wasteful: a 300 GiB file is ~9,900 Parts, so an
+   * Opening that signs them all returns several megabytes of urls, most of
+   * which expire before they are reached. With this, the library signs a window
+   * just ahead of what it is sending, and recovers from an expiry by re-signing
+   * the Parts affected rather than re-Opening the whole Upload.
+   */
+  signParts?: (args: SignPartsArgs) => Promise<Record<number, string>>;
   complete: (args: {
     key: string;
     uploadId: string;
@@ -119,6 +143,7 @@ export type UploadErrorCode =
   | "PART_COUNT_EXCEEDED"
   | "FILE_TOO_LARGE"
   | "URL_COUNT_MISMATCH"
+  | "URL_MISSING"
   | "MISSING_ETAG"
   | "RETRIES_EXHAUSTED"
   | "CANCELLED"
@@ -251,6 +276,11 @@ export interface UploadTuning {
   contentType?: string;
   /** Replace the rule deciding what is worth Retrying. */
   classify?: Classifier;
+  /**
+   * How many Parts to sign ahead when the Transport supplies `signParts`.
+   * Default 4x concurrency. Ignored when it does not.
+   */
+  urlWindow?: number;
 }
 
 /**

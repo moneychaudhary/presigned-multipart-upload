@@ -23,9 +23,13 @@ That is the whole contract:
 
 ```ts
 interface Transport {
-  open(file, ctx): Promise<{ key: string; uploadId: string; urls: string[] }>;
+  open(file, ctx): Promise<{ key: string; uploadId: string; urls?: string[] }>;
   complete({ key, uploadId, parts }): Promise<unknown>;
   abort({ key, uploadId }): Promise<unknown>;
+
+  // Optional. Worth adding once uploads run to thousands of parts —
+  // see "Signing parts on demand" below.
+  signParts?({ key, uploadId, partNumbers, signal }): Promise<Record<number, string>>;
 }
 ```
 
@@ -50,14 +54,25 @@ id.
 `uploadId` you were given, along with a fresh set of presigned URLs for the same
 upload.
 
-Both occasions must return usable URLs. This is deliberate: a URL minted an hour
-ago may not be honoured now, and re-opening is how a long upload recovers from
-its own URL expiry.
+Both occasions must return usable URLs — unless you implement `signParts`, in
+which case `open` may return just the key and upload id and leave the URLs to it.
+
+Without `signParts`, re-opening is how a long upload recovers from its own URL
+expiry, so a URL minted an hour ago being refused means `open` is called again.
 
 ::: warning Return exactly one URL per part
 `urls.length` must equal `partCount`. Too few and parts have nowhere to go; too
 many usually means a stale list from an earlier opening, which would misalign
 every part. The library rejects both rather than uploading to the wrong places.
+:::
+
+::: warning Return the upload id you were given
+On a resume, the library checks that the `key` and `uploadId` coming back match
+the ones it sent. Creating a second multipart upload here is the single most
+likely way to implement `open` wrongly — it is the same code path as the fresh
+case — and it would splice parts of two uploads into one object. The library
+refuses rather than letting that happen, but the check only fires if you got it
+wrong, so get it right.
 :::
 
 ::: danger Verify `resumeFrom` before trusting it
@@ -108,6 +123,69 @@ app.post("/api/uploads", async (req, res) => {
   res.json({ key, uploadId, urls });
 });
 ```
+
+## Signing parts on demand
+
+Optional, and only worth it for large files — but for those it matters a lot.
+
+`open` signs every part at once. A 300 GiB file is around 9,900 parts, so that
+one response carries roughly 5 MB of URLs, most of which expire long before the
+upload reaches them. Worse, expiry is repaired by opening again, which re-signs
+all 9,900 to make one part sendable — and a 300 GiB transfer outlives its URLs
+several times over.
+
+Add a fourth endpoint and the library signs a window just ahead of what it is
+sending instead:
+
+```ts
+const transport = httpTransport({
+  baseUrl: "/api/uploads",
+  paths: { sign: "/sign" },
+});
+```
+
+Your endpoint receives the parts about to be sent and returns a URL for each,
+keyed by part number:
+
+```ts
+// POST /api/uploads/sign
+// { key, uploadId, partNumbers: [41, 42, 43, ...] }
+app.post("/api/uploads/sign", async (req, res) => {
+  const { key, uploadId, partNumbers } = req.body;
+
+  // Same check as on resume: this key must belong to the caller.
+  await assertOwns(req.user, key);
+
+  const urls = Object.fromEntries(
+    await Promise.all(
+      partNumbers.map(async (partNumber) => [
+        partNumber,
+        await getSignedUrl(
+          s3,
+          new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }),
+          { expiresIn: 3600 },
+        ),
+      ]),
+    ),
+  );
+
+  res.json({ urls });
+});
+```
+
+Return a URL for **every** part number you were asked for. A missing one fails
+the upload with `URL_MISSING` rather than silently skipping a part.
+
+With this in place `open` need only return `{ key, uploadId }`, and an expired
+URL costs one re-signing of the parts in flight rather than a whole re-opening.
+How far ahead the library signs is `urlWindow`, defaulting to four times
+`concurrency`.
+
+::: tip Which one do I need?
+Under a few hundred parts, don't bother — `open` signing everything is simpler
+and the payload is small. Past a thousand parts, or for uploads expected to run
+for hours, add it.
+:::
 
 ## `complete`
 

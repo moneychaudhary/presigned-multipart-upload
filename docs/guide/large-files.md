@@ -51,9 +51,11 @@ parts turn 9,910 URLs into 2,400.
 ## It will outlive its URLs
 
 300 GiB at 100 Mbps is around seven hours; presigned URLs typically last one. The
-library handles this — a 403 on a part triggers a re-open for fresh URLs, and
-the run continues from where it was, which is exactly why `open` is called on
-two occasions. Two things on your side make it work:
+library handles this — a 403 on a part triggers a **refresh** for fresh URLs and
+the run continues from where it was. Parts in flight share their URLs' expiry, so
+five parts meeting it at once cost one refresh between them, not five. Where you
+supply `signParts` the refresh re-signs those parts; where you do not, it re-opens.
+Two things on your side make it work:
 
 - Return **fresh URLs** every time, including when `resumeFrom` is present.
   Replaying a stale list is the one way to break this.

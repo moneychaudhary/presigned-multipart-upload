@@ -22,3 +22,9 @@ Backends must not create a second multipart upload when `resumeFrom` is present
 the supplied key belongs to the caller, since `resumeFrom` arrives from the
 client and would otherwise hand one user signed write access to another's
 upload.
+
+---
+
+**Narrowed by [0005](./0005-presigned-urls-are-a-supply.md).** Opening still serves
+its two occasions, but expiry is no longer inherently one of them: a Transport
+that can sign named Parts repairs an expiry by re-signing instead.

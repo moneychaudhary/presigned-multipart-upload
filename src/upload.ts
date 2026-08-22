@@ -3,6 +3,7 @@ import type { Classifier } from "./classify.js";
 import { MISSING_ETAG_MESSAGE, UploadError, toErrorInfo, uploadError } from "./errors.js";
 import { planParts } from "./plan.js";
 import type { Semaphore } from "./semaphore.js";
+import { createPartUrls, type PartUrl, type PartUrls, type UrlMinter } from "./urls.js";
 import type {
   CompletedPart,
   FileDescriptor,
@@ -22,15 +23,12 @@ export interface UploadState {
   descriptor: FileDescriptor;
   status: UploadStatus;
   parts: PartSnapshot[];
-  urls: string[];
   key: string | null;
   uploadId: string | null;
   error: UploadErrorInfo | null;
   intent: Intent;
   /** Aborts everything in flight for the current run. */
   controller: AbortController | null;
-  /** True once this run has re-Opened for fresh urls after a 403. */
-  reopened: boolean;
   /** Durable reference to the file, where the browser could give one. */
   handle: unknown | null;
   /** Bumped on every mutation, so a snapshot can be reused until it changes. */
@@ -54,6 +52,8 @@ export interface UploadSettings {
   waitWhileOffline: boolean;
   contentType: string | undefined;
   classify: Classifier;
+  /** Parts signed ahead of the send, when the Transport can sign on demand. */
+  urlWindow: number;
 }
 
 export interface UploadDeps {
@@ -92,13 +92,11 @@ export const createUploadState = (
   descriptor: describeFile(file),
   status: "pending",
   parts: [],
-  urls: [],
   key: null,
   uploadId: null,
   error: null,
   intent: "run",
   controller: null,
-  reopened: false,
   handle,
   version: 0,
   partSize: 0,
@@ -151,10 +149,11 @@ const halted = (state: UploadState): UploadError | null => {
 /**
  * Open the Upload, or take up one that already exists.
  *
- * Both occasions yield a fresh set of Presigned URLs, because urls minted for an
- * earlier occasion may no longer be honoured by the time they are used.
+ * Returns the urls the Opening minted, if it minted any. A Transport that can
+ * sign Parts on demand need not: Opening then settles only the identity of the
+ * Upload, and the urls follow a window at a time.
  */
-const openUpload = async (state: UploadState, deps: UploadDeps): Promise<void> => {
+const openUpload = async (state: UploadState, deps: UploadDeps): Promise<string[]> => {
   const signal = state.controller!.signal;
   const resumeFrom =
     state.key !== null && state.uploadId !== null
@@ -168,25 +167,96 @@ const openUpload = async (state: UploadState, deps: UploadDeps): Promise<void> =
     signal,
   });
 
-  if (opened.urls.length !== state.parts.length) {
+  const urls = opened.urls ?? [];
+
+  // An Opening that signs nothing is only meaningful when something else can.
+  if (urls.length === 0 && deps.transport.signParts === undefined) {
     throw uploadError(
       "URL_COUNT_MISMATCH",
-      `Transport returned ${opened.urls.length} urls for ${state.parts.length} Parts.`,
+      `Transport returned no urls for ${state.parts.length} Parts, and supplies no signParts to mint them.`,
+    );
+  }
+
+  if (urls.length > 0 && urls.length !== state.parts.length) {
+    throw uploadError(
+      "URL_COUNT_MISMATCH",
+      `Transport returned ${urls.length} urls for ${state.parts.length} Parts.`,
+    );
+  }
+
+  if (resumeFrom !== undefined && (opened.key !== resumeFrom.key || opened.uploadId !== resumeFrom.uploadId)) {
+    // Harvested ETags belong to the Upload they were sent to. Finalising a
+    // different one splices Parts of two uploads, which no error downstream
+    // would attribute to this.
+    throw uploadError(
+      "URL_COUNT_MISMATCH",
+      `Transport opened a second Upload (${opened.key}/${opened.uploadId}) when asked to take up ${resumeFrom.key}/${resumeFrom.uploadId}.`,
     );
   }
 
   state.key = opened.key;
   state.uploadId = opened.uploadId;
-  state.urls = opened.urls;
+  // key and uploadId are both on the snapshot, so this must be visible.
+  deps.onChange(state);
+
+  return urls;
+};
+
+/**
+ * The Presigned URL supply for one run.
+ *
+ * Two minters sit behind one seam. Where the Transport can sign named Parts,
+ * urls are minted a window ahead and an expiry is repaired by re-signing what
+ * is in flight. Where it cannot, the whole Upload is minted by an Opening and an
+ * expiry is repaired by Opening again — the original behaviour, now sequenced so
+ * that Parts meeting one expiry together share one Opening between them.
+ */
+const createUrlSupply = (state: UploadState, deps: UploadDeps, seed: string[]): PartUrls => {
+  const { transport, settings } = deps;
+
+  const signMinter: UrlMinter = async (partNumbers, signal) => {
+    const minted = await transport.signParts!({
+      key: state.key as string,
+      uploadId: state.uploadId as string,
+      partNumbers,
+      signal,
+    });
+
+    const missing = partNumbers.filter((partNumber) => minted[partNumber] === undefined);
+    if (missing.length > 0) {
+      throw uploadError(
+        "URL_MISSING",
+        `Transport signed no url for Part${missing.length > 1 ? "s" : ""} ${missing.join(", ")}.`,
+      );
+    }
+    return minted;
+  };
+
+  const openMinter: UrlMinter = async () => {
+    const urls = await openUpload(state, deps);
+    return Object.fromEntries(urls.map((url, index) => [index + 1, url]));
+  };
+
+  const signs = transport.signParts !== undefined;
+
+  return createPartUrls({
+    partCount: state.parts.length,
+    mint: signs ? signMinter : openMinter,
+    windowSize: signs ? Math.max(1, settings.urlWindow) : Number.POSITIVE_INFINITY,
+    // One Refresh between landed Parts. A second failure on urls minted moments
+    // ago is not an expiry, so re-Opening again would only loop.
+    maxRefreshes: 1,
+    seed,
+  });
 };
 
 const sendPartOnce = async (
   state: UploadState,
   part: PartSnapshot,
   deps: UploadDeps,
+  url: string,
 ): Promise<string> => {
   const { platform, settings } = deps;
-  const url = state.urls[part.partNumber - 1]!;
 
   part.status = "uploading";
   part.attempts += 1;
@@ -221,6 +291,7 @@ const sendPartWithRetry = async (
   state: UploadState,
   part: PartSnapshot,
   deps: UploadDeps,
+  urls: PartUrls,
 ): Promise<void> => {
   const { platform, settings } = deps;
 
@@ -257,16 +328,22 @@ const sendPartWithRetry = async (
       stopIfHalted();
     }
 
+    // Null until obtained, so the catch can tell "the url was refused" from
+    // "there was never a url" — a signing failure that no Refresh would fix.
+    let url: PartUrl | null = null;
+
     try {
-      part.eTag = await sendPartOnce(state, part, deps);
+      // Taken inside the Attempt, so a failure is judged against the urls this
+      // Attempt actually used rather than against whatever a sibling Part has
+      // since refreshed to.
+      url = await urls.get(part.partNumber, state.controller!.signal);
+      part.eTag = await sendPartOnce(state, part, deps, url.value);
       part.status = "landed";
       part.loaded = part.size;
-      // Progress since the last re-Open means the fresh urls worked, so a later
-      // expiry may be recovered from too. Without this, an upload long enough to
-      // outlive its urls twice would die on the second expiry. A genuine
-      // authorisation failure still terminates, because it 403s again straight
-      // away with nothing landing in between.
-      state.reopened = false;
+      // A landed Part proves the current urls work, so a later expiry may be
+      // recovered from too. Without this, an upload long enough to outlive its
+      // urls twice would die on the second expiry.
+      urls.noteProgress(url.generation);
       deps.onChange(state);
       deps.onPartLanded(state.id, part.partNumber);
       await deps.onRecord(state, "progress");
@@ -282,7 +359,13 @@ const sendPartWithRetry = async (
         continue;
       }
 
-      const verdict = settings.classify(error, { alreadyReopened: state.reopened });
+      // A failure with no url in hand came from obtaining one. Fresh urls are
+      // exactly what failed, so the classifier is told they have been tried —
+      // which keeps a broken signing endpoint fatal and a flaky one Retryable.
+      const verdict =
+        url === null
+          ? settings.classify(error, { alreadyReopened: true })
+          : settings.classify(error, { alreadyReopened: !urls.canRefresh(url.generation) });
 
       if (verdict === "fatal") {
         failPart(
@@ -293,10 +376,22 @@ const sendPartWithRetry = async (
       }
 
       // Fresh urls are a new situation, not another go at the old one, so this
-      // costs nothing. The classifier only permits it once per landed Part.
-      if (verdict === "reopen") {
-        state.reopened = true;
-        await openUpload(state, deps);
+      // costs no Retry. Whether there is a Refresh left to spend is the supply's
+      // decision, not the classifier's — a replacement classifier that always
+      // says "reopen" must not be able to loop the Core forever.
+      if (verdict === "reopen" && url !== null) {
+        const refreshed = await urls.refresh(url.generation, state.controller!.signal);
+        if (refreshed === null) {
+          failPart(
+            error instanceof UploadError
+              ? error
+              : uploadError(
+                  "SEND_FAILED",
+                  `Part ${part.partNumber} was refused on freshly minted urls: ${String(error)}`,
+                ),
+          );
+        }
+        parkPart();
         continue;
       }
 
@@ -340,7 +435,6 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   }
 
   state.intent = "run";
-  state.reopened = false;
   state.error = null;
   state.controller = new AbortController();
 
@@ -390,8 +484,9 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   state.status = "opening";
   deps.onChange(state);
 
+  let urls: PartUrls;
   try {
-    await openUpload(state, deps);
+    urls = createUrlSupply(state, deps, await openUpload(state, deps));
   } catch (error) {
     settle(
       error instanceof UploadError
@@ -422,7 +517,7 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
       const release = await deps.budget.acquire();
       try {
         if (failures.length > 0 || halted(state)) return;
-        await sendPartWithRetry(state, part, deps);
+        await sendPartWithRetry(state, part, deps, urls);
       } catch (error) {
         failures.push(error);
         // One doomed Part ends the run; the others stop rather than burn

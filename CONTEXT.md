@@ -61,9 +61,26 @@ the application retains control over authorisation, quota, and object naming.
 
 Asking the Transport to make an Upload ready to receive Parts. Opening serves two
 occasions — starting fresh, and taking up an Upload that already exists — and the
-Transport is always told which occasion it is. Both occasions yield a usable set
-of Presigned URLs, because a URL minted for an earlier occasion may no longer be
-honoured by the time it is used.
+Transport is always told which occasion it is. Opening settles which Upload is
+being written to, and may also yield the Presigned URLs for its Parts.
+
+### Signing
+
+Asking the Transport for Presigned URLs for named Parts. Not every Transport can
+do this — where it cannot, Opening is the only source of URLs and yields them all
+at once. Where it can, the library asks only for the Parts it is about to send.
+
+### Refresh
+
+Replacing Presigned URLs that are no longer honoured. A URL outlives its usefulness
+long before a large Upload finishes, so a Refresh is an ordinary event in a long
+transfer rather than a failure. It is an Upload-wide event: Parts share their URLs'
+expiry, so several Parts meeting it at once are meeting one Refresh between them,
+not one each.
+
+A Refresh is not unlimited. Fresh URLs that are refused as well distinguish a
+genuine authorisation failure from an expiry, and end the Upload rather than
+looping.
 
 ### Core
 

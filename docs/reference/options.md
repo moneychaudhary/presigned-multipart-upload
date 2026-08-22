@@ -22,6 +22,7 @@ createBatch({
   partTimeoutMs,
   waitWhileOffline,
   classify,
+  urlWindow,
 
   contentType,
   fingerprint,
@@ -130,6 +131,16 @@ fast.
 
 Replace the rule deciding what is worth repeating. See
 [replacing the rule](/guide/retry#replacing-the-rule).
+
+### `urlWindow`
+
+How many Parts to sign ahead when the transport supplies `signParts`. Default
+four times `concurrency`. Ignored when it does not.
+
+Large enough that the connection budget never waits on a signing round trip;
+small enough that a 10,000-part upload never signs URLs it will not reach for
+hours. Raise it if your signing endpoint is slow, lower it if you want fewer
+URLs live at once.
 
 ## Durability
 

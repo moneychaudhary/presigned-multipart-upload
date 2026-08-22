@@ -143,6 +143,9 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     waitWhileOffline: options.waitWhileOffline ?? DEFAULTS.waitWhileOffline,
     contentType: options.contentType,
     classify: options.classify ?? defaultClassifier,
+    // Enough Parts signed ahead that the Connection Budget never waits on the
+    // signing round trip, without signing thousands nobody will reach today.
+    urlWindow: options.urlWindow ?? (options.concurrency ?? DEFAULTS.concurrency) * 4,
   };
 
   const states: UploadState[] =

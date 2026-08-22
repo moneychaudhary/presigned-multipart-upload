@@ -35,6 +35,7 @@ export type {
   FileDescriptor,
   OpenContext,
   OpenResult,
+  SignPartsArgs,
   PartSnapshot,
   PartStatus,
   Platform,
