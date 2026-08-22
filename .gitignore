@@ -1,0 +1,12 @@
+node_modules/
+dist/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+*.log
+*.tgz
+.DS_Store
+
+# Claude Code / agent tooling — local only
+CLAUDE.md
+.claude/
+.scratch/
