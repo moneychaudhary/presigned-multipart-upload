@@ -49,24 +49,33 @@ Your three backend functions. See [the backend contract](/guide/backend-contract
 
 ### `partSize`
 
-`number` — default `10 MiB`
+`number` — default: derived per file
 
 Bytes per part. Larger parts mean fewer requests and less overhead; smaller
 parts mean less to re-send when one fails.
 
-The defaults handle files up to about 97 GiB before hitting the part limit.
+Left unset, this is chosen per file: 10 MiB, or the smallest whole MiB that
+keeps the file inside the provider's part limit, whichever is larger. A fixed
+size cannot serve every file — at 10 MiB the 10,000-part cap would refuse
+anything above ~97 GiB.
+
+Set it to override that, and lower `concurrency` to match: `partSize x
+concurrency` is roughly what the tab holds in memory. See
+[very large files](/guide/large-files).
 
 ### `provider`
 
-`"s3" | "r2" | "b2" | "minio" | "wasabi" | { minPartSize?, maxParts? }` — default `"s3"`
+`"s3" | "r2" | "b2" | "minio" | "wasabi" | { minPartSize?, maxParts?, maxPartSize?, maxObjectSize? }` — default `"s3"`
 
 The storage provider's limits. These are facts about the provider rather than
 preferences, so they live together and out of the way:
 
 - **minimum part size** — the floor for every part except the last. A smaller
   `partSize` is rejected with `INVALID_PART_SIZE` before anything is sent.
-- **maximum parts** — exceeding it fails with `PART_COUNT_EXCEEDED` and a
-  message suggesting a larger part size.
+- **maximum part size** — a larger `partSize` is rejected with
+  `INVALID_PART_SIZE`.
+- **maximum parts** — exceeding it fails with `PART_COUNT_EXCEEDED`.
+- **maximum object size** — a larger file is rejected with `FILE_TOO_LARGE`.
 
 Every S3-compatible provider currently shares S3's numbers, so the named presets
 are equivalent — they exist so the choice is explicit rather than a thing you

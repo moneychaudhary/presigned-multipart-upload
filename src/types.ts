@@ -117,6 +117,7 @@ export type UploadErrorCode =
   | "EMPTY_FILE"
   | "INVALID_PART_SIZE"
   | "PART_COUNT_EXCEEDED"
+  | "FILE_TOO_LARGE"
   | "URL_COUNT_MISMATCH"
   | "MISSING_ETAG"
   | "RETRIES_EXHAUSTED"
@@ -188,21 +189,44 @@ export interface ProviderLimits {
   minPartSize?: number;
   /** Most Parts accepted in one upload. */
   maxParts?: number;
+  /** Largest Part accepted. */
+  maxPartSize?: number;
+  /** Largest object the provider will assemble from those Parts. */
+  maxObjectSize?: number;
 }
 
 const MIB = 1024 * 1024;
+const GIB = 1024 * MIB;
+const TIB = 1024 * GIB;
 
-/** Named provider limits. All S3-compatible providers share S3's numbers. */
+/**
+ * Named provider limits. All S3-compatible providers share S3's numbers.
+ *
+ * Where a provider is in fact more generous (B2 assembles objects up to 10 TB),
+ * S3's figure is used anyway: it is the safe common denominator, and anyone who
+ * needs the extra can pass the limits explicitly.
+ */
 export const PROVIDERS = {
-  s3: { minPartSize: 5 * MIB, maxParts: 10_000 },
-  r2: { minPartSize: 5 * MIB, maxParts: 10_000 },
-  b2: { minPartSize: 5 * MIB, maxParts: 10_000 },
-  minio: { minPartSize: 5 * MIB, maxParts: 10_000 },
-  wasabi: { minPartSize: 5 * MIB, maxParts: 10_000 },
+  s3: { minPartSize: 5 * MIB, maxParts: 10_000, maxPartSize: 5 * GIB, maxObjectSize: 5 * TIB },
+  r2: { minPartSize: 5 * MIB, maxParts: 10_000, maxPartSize: 5 * GIB, maxObjectSize: 5 * TIB },
+  b2: { minPartSize: 5 * MIB, maxParts: 10_000, maxPartSize: 5 * GIB, maxObjectSize: 5 * TIB },
+  minio: { minPartSize: 5 * MIB, maxParts: 10_000, maxPartSize: 5 * GIB, maxObjectSize: 5 * TIB },
+  wasabi: { minPartSize: 5 * MIB, maxParts: 10_000, maxPartSize: 5 * GIB, maxObjectSize: 5 * TIB },
 } as const satisfies Record<string, Required<ProviderLimits>>;
 
 export interface UploadTuning {
-  /** Bytes per Part. Default 10 MiB. */
+  /**
+   * Bytes per Part.
+   *
+   * Left out, this is chosen per file: 10 MiB, or the smallest whole MiB that
+   * keeps the file inside the provider's Part limit, whichever is larger. A
+   * 300 GB file needs Parts of at least ~30.7 MiB to fit in 10,000 of them, so
+   * a fixed default would refuse it outright.
+   *
+   * Set it only to override that. Remember the memory cost: `concurrency`
+   * Parts are in flight at once, so `partSize x concurrency` is roughly the
+   * ceiling on what the tab holds.
+   */
   partSize?: number;
   /**
    * Which storage provider's limits apply. These are facts about the provider,

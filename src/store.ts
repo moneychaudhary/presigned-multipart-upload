@@ -105,16 +105,41 @@ const promisify = <T>(request: IDBRequest<T>): Promise<T> =>
  * web storage able to hold a File Handle, which Durable Resume depends on.
  */
 export const createIndexedDbStore = (dbName = DB_NAME): RecordStore => {
+  // Held open rather than reopened per write. A large file lands thousands of
+  // Parts, and opening a connection for each one costs more than the write.
+  let connection: Promise<IDBDatabase> | null = null;
+
+  const connect = (): Promise<IDBDatabase> => {
+    if (connection !== null) return connection;
+
+    connection = openDb(dbName).then(
+      (db) => {
+        // A connection dropped underneath us — eviction, or another tab
+        // upgrading — must not be handed out again.
+        db.onclose = () => {
+          connection = null;
+        };
+        db.onversionchange = () => {
+          db.close();
+          connection = null;
+        };
+        return db;
+      },
+      (error: unknown) => {
+        connection = null;
+        throw error;
+      },
+    );
+
+    return connection;
+  };
+
   const withStore = async <T>(
     mode: IDBTransactionMode,
     use: (store: IDBObjectStore) => IDBRequest<T>,
   ): Promise<T> => {
-    const db = await openDb(dbName);
-    try {
-      return await promisify(use(db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)));
-    } finally {
-      db.close();
-    }
+    const db = await connect();
+    return promisify(use(db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)));
   };
 
   return {

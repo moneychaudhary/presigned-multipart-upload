@@ -26,10 +26,19 @@ import {
   type UploadState,
 } from "./upload.js";
 
-const MIB = 1024 * 1024;
+/** Shortest gap between two progress writes of the same Upload Record. */
+const RECORD_INTERVAL_MS = 2_000;
+
+/**
+ * Below this many Parts, every landed Part is written down.
+ *
+ * A Record rewrites whole, so writing on every Part costs O(n^2) bytes across
+ * an Upload. At a few hundred Parts that is nothing and the durability is worth
+ * having; at ten thousand it is not, and those writes get coalesced instead.
+ */
+const COALESCE_ABOVE_PARTS = 200;
 
 const DEFAULTS = {
-  partSize: 10 * MIB,
   concurrency: 5,
   maxRetries: 3,
   retryBaseMs: 500,
@@ -85,12 +94,12 @@ const deriveBatchStatus = (uploads: UploadSnapshot[]): BatchStatus => {
   return "succeeded";
 };
 
-const toRecord = (state: UploadState, partSize: number, now: number): UploadRecord => ({
+const toRecord = (state: UploadState, now: number): UploadRecord => ({
   id: state.id,
   key: state.key as string,
   uploadId: state.uploadId as string,
   file: state.descriptor,
-  partSize,
+  partSize: state.partSize,
   partCount: state.parts.length,
   landed: state.parts
     .filter((part) => part.status === "landed" && part.eTag !== null)
@@ -119,9 +128,13 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
       : (options.provider ?? PROVIDERS.s3);
 
   const settings: UploadSettings = {
-    partSize: options.partSize ?? DEFAULTS.partSize,
+    // Left unset, the size is chosen per file — a fixed one cannot serve both a
+    // 3 MB file and a 300 GB one, which needs ~30.7 MiB Parts to fit in 10,000.
+    partSize: options.partSize ?? "auto",
     minPartSize: limits.minPartSize ?? PROVIDERS.s3.minPartSize,
     maxParts: limits.maxParts ?? PROVIDERS.s3.maxParts,
+    maxPartSize: limits.maxPartSize ?? PROVIDERS.s3.maxPartSize,
+    maxObjectSize: limits.maxObjectSize ?? PROVIDERS.s3.maxObjectSize,
     concurrency: options.concurrency ?? DEFAULTS.concurrency,
     maxRetries: options.maxRetries ?? DEFAULTS.maxRetries,
     retryBaseMs: options.retryBaseMs ?? DEFAULTS.retryBaseMs,
@@ -179,13 +192,31 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
     observable.invalidate();
   };
 
-  const persist = async (state: UploadState): Promise<void> => {
+  // The exposure from coalescing is bounded: a tab that dies mid-interval loses
+  // only the Parts that landed inside it, and a Resume re-sends those.
+  const lastWriteAt = new Map<string, number>();
+
+  const persist = async (
+    state: UploadState,
+    occasion: "milestone" | "progress" = "milestone",
+  ): Promise<void> => {
     if (store === null || state.key === null || state.uploadId === null) return;
+
     if (state.status === "succeeded" || state.status === "cancelled") {
+      lastWriteAt.delete(state.id);
       await store.remove(state.id);
       return;
     }
-    await store.put(toRecord(state, settings.partSize, platform.now()));
+
+    const now = platform.now();
+    const coalesce =
+      occasion === "progress" &&
+      state.parts.length > COALESCE_ABOVE_PARTS &&
+      now - (lastWriteAt.get(state.id) ?? 0) < RECORD_INTERVAL_MS;
+    if (coalesce) return;
+
+    lastWriteAt.set(state.id, now);
+    await store.put(toRecord(state, now));
   };
 
   const deps: UploadDeps = {

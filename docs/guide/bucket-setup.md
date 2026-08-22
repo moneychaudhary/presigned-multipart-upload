@@ -88,23 +88,21 @@ anything:
 | Limit | Value | What the library does |
 | --- | --- | --- |
 | Minimum part size | 5 MiB, except the last part | Rejects a smaller `partSize` with `INVALID_PART_SIZE` |
-| Maximum parts | 10,000 | Rejects with `PART_COUNT_EXCEEDED` and suggests a larger part size |
+| Maximum part size | 5 GiB | Rejects a larger `partSize` with `INVALID_PART_SIZE` |
+| Maximum parts | 10,000 | Rejects with `PART_COUNT_EXCEEDED` |
+| Maximum object | 5 TiB | Rejects with `FILE_TOO_LARGE` |
 
-The defaults — 10 MiB parts, 10,000 max — handle files up to about 97 GiB. For
-anything larger, raise `partSize`.
+All four are checked before the Transport is asked to Open anything, so a file
+that cannot be uploaded never leaves a dangling multipart upload behind.
 
-Both limits are configurable, because not every S3-compatible provider uses the
-same numbers.
+They are configurable, because not every S3-compatible provider uses the same
+numbers — pass `provider` as an object to state your own.
 
-::: warning Two limits the library does not enforce
-S3 caps a single part at **5 GiB** and a whole object at **5 TiB**, and this
-library checks neither — it only enforces the *minimum* part size.
-
-So `partSize: 6 * GiB` uploads happily and fails at the provider, and a 6 TiB
-file with `partSize: 1 GiB` plans 6,144 parts, passes every check, uploads for
-hours, and then fails finalising with `EntityTooLarge`. If you raise `partSize`
-for very large files, keep it under 5 GiB and check your total against the
-object ceiling yourself.
+::: tip You do not have to size parts yourself
+The 10,000-part cap would otherwise make a fixed part size a ceiling on file
+size. Left unset, `partSize` is derived per file so that a 300 GiB upload plans
+9,910 parts of 31 MiB rather than being refused. See
+[very large files](/guide/large-files).
 :::
 
 ## A note on transfer acceleration

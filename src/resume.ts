@@ -125,6 +125,7 @@ export const createResumedBatch = async (
 
     state.key = record.key;
     state.uploadId = record.uploadId;
+    state.partSize = record.partSize;
     state.parts = planParts({
       size: record.file.size,
       partSize: record.partSize,
@@ -132,7 +133,9 @@ export const createResumedBatch = async (
       // limits are not re-litigated here.
       minPartSize: 1,
       maxParts: Number.MAX_SAFE_INTEGER,
-    });
+      maxPartSize: Number.MAX_SAFE_INTEGER,
+      maxObjectSize: Number.MAX_SAFE_INTEGER,
+    }).parts;
 
     // Mark what already landed so the Resume sends only what is missing.
     const landed = new Map(record.landed.map((part) => [part.partNumber, part.eTag]));

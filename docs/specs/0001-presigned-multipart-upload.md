@@ -570,3 +570,17 @@ planning is still not offered a pointless Resume.
 long enough to outlive its Presigned URLs twice therefore died on the second expiry.
 The latch now clears whenever a Part lands, so repeated genuine expiry recovers while
 back-to-back 403s with nothing landing in between remain fatal.
+
+**Part size derived per file.** `partSize` defaulted to a fixed 10 MiB, which made the
+provider's 10,000-Part cap a ceiling on file size: anything above ~97 GiB was refused
+with `PART_COUNT_EXCEEDED`. It is now chosen per file when unset, growing only as far as
+the file forces, and Part size moved from the Batch's settings onto the Upload State and
+the Upload Record. `maxPartSize` and `maxObjectSize` were added to the provider limits
+and are now enforced in the planner, alongside the two that already were. See
+[ADR 0004](../adr/0004-part-size-is-chosen-per-file.md).
+
+**Upload Record writes coalesced above 200 Parts.** A Record rewrites whole, so writing
+on every landed Part costs O(n^2) bytes across an Upload — negligible at a few hundred
+Parts, wasteful at ten thousand. Above that threshold progress writes are limited to one
+every two seconds; milestones are never coalesced. The IndexedDB connection is now held
+open rather than reopened per write.

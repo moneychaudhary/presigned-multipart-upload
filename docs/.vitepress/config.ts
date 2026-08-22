@@ -30,6 +30,7 @@ export default defineConfig({
           { text: "Retry and backoff", link: "/guide/retry" },
           { text: "Cancel, pause and resume", link: "/guide/lifecycle" },
           { text: "Durable resume", link: "/guide/durable-resume" },
+          { text: "Very large files", link: "/guide/large-files" },
         ],
       },
       {

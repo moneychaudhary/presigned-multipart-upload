@@ -35,12 +35,17 @@ export interface UploadState {
   handle: unknown | null;
   /** Bumped on every mutation, so a snapshot can be reused until it changes. */
   version: number;
+  /** Settled when the Parts are planned; 0 until then. Carried by the Record. */
+  partSize: number;
 }
 
 export interface UploadSettings {
-  partSize: number;
+  /** "auto" when the caller did not pick one — see planParts. */
+  partSize: number | "auto";
   minPartSize: number;
   maxParts: number;
+  maxPartSize: number;
+  maxObjectSize: number;
   concurrency: number;
   maxRetries: number;
   retryBaseMs: number;
@@ -60,7 +65,14 @@ export interface UploadDeps {
   onChange: (state: UploadState) => void;
   onPartLanded: (uploadId: string, partNumber: number) => void;
   onRetrying: (uploadId: string, partNumber: number, attempt: number, delayMs: number) => void;
-  onRecord: (state: UploadState) => Promise<void>;
+  /**
+   * Persist the Upload Record.
+   *
+   * "milestone" must be written; "progress" may be coalesced, since it only
+   * ever adds a landed Part and losing the last few costs a Resume nothing but
+   * re-sending them.
+   */
+  onRecord: (state: UploadState, occasion?: "milestone" | "progress") => Promise<void>;
 }
 
 export const describeFile = (file: File): FileDescriptor => ({
@@ -89,6 +101,7 @@ export const createUploadState = (
   reopened: false,
   handle,
   version: 0,
+  partSize: 0,
 });
 
 /**
@@ -150,7 +163,7 @@ const openUpload = async (state: UploadState, deps: UploadDeps): Promise<void> =
 
   const opened = await deps.transport.open(state.descriptor, {
     partCount: state.parts.length,
-    partSize: deps.settings.partSize,
+    partSize: state.partSize,
     resumeFrom,
     signal,
   });
@@ -256,7 +269,7 @@ const sendPartWithRetry = async (
       state.reopened = false;
       deps.onChange(state);
       deps.onPartLanded(state.id, part.partNumber);
-      await deps.onRecord(state);
+      await deps.onRecord(state, "progress");
       return;
     } catch (error) {
       stopIfHalted();
@@ -349,12 +362,16 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
   // A first run plans Parts; a Resume keeps the plan, and the Parts that landed.
   if (state.parts.length === 0) {
     try {
-      state.parts = planParts({
+      const plan = planParts({
         size: state.descriptor.size,
         partSize: settings.partSize,
         minPartSize: settings.minPartSize,
         maxParts: settings.maxParts,
+        maxPartSize: settings.maxPartSize,
+        maxObjectSize: settings.maxObjectSize,
       });
+      state.partSize = plan.partSize;
+      state.parts = plan.parts;
     } catch (error) {
       settle(error);
       return;

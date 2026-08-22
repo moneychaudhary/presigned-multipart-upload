@@ -35,11 +35,19 @@ cannot fix a configuration problem.
 
 ### `INVALID_PART_SIZE`
 
-`partSize` is below `minPartSize`. Caught before anything is sent.
+An explicit `partSize` is below `minPartSize` or above `maxPartSize`. Caught
+before anything is sent.
 
 ### `PART_COUNT_EXCEEDED`
 
-The file needs more parts than the provider allows. **Fix:** raise `partSize`.
+The file needs more parts than the provider allows. Only reachable with an
+explicit `partSize` — left unset, one large enough is chosen for you.
+**Fix:** raise `partSize`, or stop setting it.
+
+### `FILE_TOO_LARGE`
+
+The file is above the provider's limit for a single object — 5 TiB on S3. No
+part size can help; caught before anything is sent.
 
 ### `EMPTY_FILE`
 
