@@ -8,15 +8,13 @@ React is an optional peer dependency — importing the core never pulls it in.
 
 ## `useUpload`
 
+Pass the options and the hook owns the batch — there is no `useMemo` to forget:
+
 ```tsx
-import { createBatch } from "presigned-multipart-upload";
 import { useUpload } from "presigned-multipart-upload/react";
-import { useMemo } from "react";
 
 const Uploader = ({ files }: { files: File[] }) => {
-  // Memoise the controller: a new one on every render would restart everything.
-  const batch = useMemo(() => createBatch({ files, transport }), [files]);
-  const { snapshot, start, pause, resume, cancel } = useUpload(batch);
+  const { snapshot, file, start, pause, resume, cancel } = useUpload({ files, transport });
 
   return (
     <div>
@@ -47,10 +45,11 @@ immutable snapshot whose identity changes only when something changed, which is
 exactly what that primitive wants — so the component re-renders when the upload
 moves and not otherwise.
 
-::: warning Memoise the controller
-`createBatch` starts a new batch. Calling it in a render body without
-`useMemo` creates a fresh one every render and nothing will ever finish.
-:::
+`useUpload` also accepts an existing controller if you need to own it yourself —
+`useUpload(batch)` — and returns it as `batch` either way.
+
+`file` is the sole upload's snapshot when the batch holds exactly one, or `null`
+otherwise, which saves indexing into `snapshot.uploads[0]` for the common case.
 
 ## `useUploadEvent`
 

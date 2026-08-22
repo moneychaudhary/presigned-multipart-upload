@@ -29,7 +29,7 @@ const interrupt = async (store: RecordStore, platformOptions: FakePlatformOption
     platform,
     store,
     partSize: 10 * KB,
-    minPartSize: 1,
+    provider: { minPartSize: 1 },
     maxRetries: 0,
     concurrency: 1,
   });
@@ -49,7 +49,7 @@ describe("keeping an Upload Record", () => {
       platform,
       store,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       concurrency: 1,
     });
 
@@ -90,7 +90,7 @@ describe("keeping an Upload Record", () => {
       platform: createFakePlatform(),
       store,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.start();
@@ -107,7 +107,7 @@ describe("keeping an Upload Record", () => {
       platform,
       store,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();
@@ -206,7 +206,7 @@ describe("resuming across a page session, via a File Handle", () => {
       transport,
       platform: createFakePlatform({ handlesSupported: true }),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const snapshot = await batch.resume();
@@ -229,7 +229,7 @@ describe("resuming across a page session, via a File Handle", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.resume();
@@ -248,7 +248,7 @@ describe("resuming across a page session, via a File Handle", () => {
       transport,
       platform: createFakePlatform({ handlesSupported: true }),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.resume();
@@ -267,7 +267,7 @@ describe("resuming across a page session, via a File Handle", () => {
         transport: createFakeTransport(),
         platform: createFakePlatform({ handlesSupported: true, permissionGranted: false }),
         partSize: 10 * KB,
-        minPartSize: 1,
+        provider: { minPartSize: 1 },
       }),
     ).rejects.toMatchObject({ code: "FILE_REQUIRED" });
   });
@@ -285,7 +285,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
         transport: createFakeTransport(),
         platform: createFakePlatform({ handlesSupported: false }),
         partSize: 10 * KB,
-        minPartSize: 1,
+        provider: { minPartSize: 1 },
       }),
     ).rejects.toMatchObject({ code: "FILE_REQUIRED" });
   });
@@ -300,7 +300,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
       transport: createFakeTransport(),
       platform: createFakePlatform({ handlesSupported: false }),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     expect((await batch.resume()).uploads[0]!.status).toBe("succeeded");
@@ -318,7 +318,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
         transport: createFakeTransport(),
         platform,
         partSize: 10 * KB,
-        minPartSize: 1,
+        provider: { minPartSize: 1 },
       }),
     ).rejects.toMatchObject({ code: "FINGERPRINT_MISMATCH" });
 
@@ -336,7 +336,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
         transport: createFakeTransport(),
         platform: createFakePlatform({ handlesSupported: false }),
         partSize: 10 * KB,
-        minPartSize: 1,
+        provider: { minPartSize: 1 },
       }),
     ).rejects.toMatchObject({ code: "FINGERPRINT_MISMATCH" });
   });
@@ -357,7 +357,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
         transport: createFakeTransport(),
         platform: createFakePlatform({ handlesSupported: false }),
         partSize: 10 * KB,
-        minPartSize: 1,
+        provider: { minPartSize: 1 },
       }),
     ).rejects.toMatchObject({ code: "FINGERPRINT_MISMATCH" });
   });
@@ -372,7 +372,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
       transport: createFakeTransport(),
       platform: createFakePlatform({ handlesSupported: false }),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       fingerprint: { name: false },
     });
 

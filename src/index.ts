@@ -4,6 +4,8 @@
 // not part of the contract.
 
 export { createBatch } from "./batch.js";
+export { httpTransport } from "./http-transport.js";
+export { PROVIDERS } from "./types.js";
 export { createResumedBatch, listResumable } from "./resume.js";
 export { browserPlatform } from "./platform/browser.js";
 export { createIndexedDbStore, createMemoryStore, scopeStore } from "./store.js";
@@ -20,6 +22,7 @@ export type {
   ResumeSpec,
 } from "./resume.js";
 export type { RecordStore, UploadRecord } from "./store.js";
+export type { HttpTransportOptions } from "./http-transport.js";
 export type {
   BatchController,
   BatchEvents,
@@ -37,6 +40,7 @@ export type {
   Platform,
   PlatformFiles,
   Progress,
+  ProviderLimits,
   ResumeContext,
   SendPartArgs,
   SendPartResult,

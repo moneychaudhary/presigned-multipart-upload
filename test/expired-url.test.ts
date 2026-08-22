@@ -16,7 +16,7 @@ const build = (script: Script, extra = {}) => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       concurrency: 1,
       ...extra,
     }),

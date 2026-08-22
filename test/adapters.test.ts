@@ -20,7 +20,7 @@ const build = (script?: Script): BatchController =>
     transport: createFakeTransport(),
     platform: createFakePlatform(script ? { script } : {}),
     partSize: 10 * KB,
-    minPartSize: 1,
+    provider: { minPartSize: 1 },
   });
 
 describe("the React adapter", () => {

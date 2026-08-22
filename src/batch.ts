@@ -4,9 +4,11 @@ import { createObservable } from "./observable.js";
 import { browserPlatform } from "./platform/browser.js";
 import { createSemaphore } from "./semaphore.js";
 import { DEFAULT_RECORD_TTL_MS, type UploadRecord } from "./store.js";
+import { PROVIDERS } from "./types.js";
 import type {
   BatchController,
   BatchFile,
+  ProviderLimits,
   BatchOptions,
   BatchSnapshot,
   BatchStatus,
@@ -28,8 +30,6 @@ const MIB = 1024 * 1024;
 
 const DEFAULTS = {
   partSize: 10 * MIB,
-  minPartSize: 5 * MIB,
-  maxParts: 10_000,
   concurrency: 5,
   maxRetries: 3,
   retryBaseMs: 500,
@@ -112,10 +112,16 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
   const store = options.store ?? null;
   const recordTtlMs = options.recordTtlMs ?? DEFAULT_RECORD_TTL_MS;
 
+  // A named provider or explicit limits; "s3" suits every S3-compatible one.
+  const limits: ProviderLimits =
+    typeof options.provider === "string"
+      ? PROVIDERS[options.provider]
+      : (options.provider ?? PROVIDERS.s3);
+
   const settings: UploadSettings = {
     partSize: options.partSize ?? DEFAULTS.partSize,
-    minPartSize: options.minPartSize ?? DEFAULTS.minPartSize,
-    maxParts: options.maxParts ?? DEFAULTS.maxParts,
+    minPartSize: limits.minPartSize ?? PROVIDERS.s3.minPartSize,
+    maxParts: limits.maxParts ?? PROVIDERS.s3.maxParts,
     concurrency: options.concurrency ?? DEFAULTS.concurrency,
     maxRetries: options.maxRetries ?? DEFAULTS.maxRetries,
     retryBaseMs: options.retryBaseMs ?? DEFAULTS.retryBaseMs,
@@ -319,11 +325,23 @@ export const createBatch = (options: BatchInternalOptions): BatchController => {
 
   void purgeStale();
 
+  const file = (): UploadSnapshot => {
+    const uploads = observable.read().uploads;
+    if (uploads.length !== 1) {
+      throw uploadError(
+        "NOT_RESUMABLE",
+        `file() is for a Batch of exactly one Upload; this Batch holds ${uploads.length}. Use getSnapshot().uploads.`,
+      );
+    }
+    return uploads[0]!;
+  };
+
   return {
     start,
     resume,
     pause,
     cancel,
+    file,
     getSnapshot: observable.read,
     subscribe: observable.subscribe,
     on: observable.on,

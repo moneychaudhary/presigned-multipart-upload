@@ -12,7 +12,13 @@ const harness = (overrides: Record<string, unknown> = {}) => {
   return {
     platform,
     transport,
-    options: { transport, platform, partSize: 10 * KB, minPartSize: 1, ...overrides },
+    options: {
+      transport,
+      platform,
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+      ...overrides,
+    },
   };
 };
 
@@ -104,7 +110,7 @@ describe("planning Parts", () => {
   });
 
   it("rejects a file needing more Parts than the provider allows, before any request", async () => {
-    const { platform, transport, options } = harness({ partSize: 1 * KB, maxParts: 5 });
+    const { platform, transport, options } = harness({ partSize: 1 * KB, provider: { minPartSize: 1, maxParts: 5 } });
     const batch = createBatch({ files: [makeFile(20 * KB)], ...options });
 
     const snapshot = await batch.start();
@@ -134,7 +140,7 @@ describe("planning Parts", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const snapshot = await batch.start();

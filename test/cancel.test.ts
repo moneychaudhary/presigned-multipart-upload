@@ -15,7 +15,7 @@ describe("cancelling", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();
@@ -36,7 +36,7 @@ describe("cancelling", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();
@@ -55,7 +55,7 @@ describe("cancelling", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.start();
@@ -75,7 +75,7 @@ describe("cancelling", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();
@@ -100,7 +100,7 @@ describe("cancelling", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.start();
@@ -116,7 +116,7 @@ describe("cancelling", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const snapshot = await batch.cancel();
@@ -134,7 +134,7 @@ describe("cancelling", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       concurrency: 8,
     });
 
@@ -155,7 +155,7 @@ describe("cancelling", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       concurrency: 8,
     });
 
@@ -174,7 +174,7 @@ describe("cancelling", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const cancelled = vi.fn();
@@ -201,7 +201,7 @@ describe("cancelling", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();
@@ -221,7 +221,7 @@ describe("resuming a cancelled Upload", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();

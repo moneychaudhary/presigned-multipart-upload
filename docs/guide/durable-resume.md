@@ -77,6 +77,19 @@ yourself.
 
 ## Continuing
 
+To pick up everything recoverable without involving the user at all — every
+record whose file handle still works — ask for `"all"`:
+
+```ts
+import { createResumedBatch } from "presigned-multipart-upload";
+
+const batch = await createResumedBatch({ store, transport, resume: "all" });
+await batch.resume();
+```
+
+Records needing the file re-selected are skipped, because only your application
+can ask for it. Handle those explicitly:
+
 ```ts
 import { createResumedBatch } from "presigned-multipart-upload";
 

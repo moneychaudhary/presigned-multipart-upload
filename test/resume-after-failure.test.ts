@@ -24,7 +24,7 @@ const build = (platform: ReturnType<typeof createFakePlatform>, extra = {}) => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       maxRetries: 1,
       concurrency: 1,
       ...extra,
@@ -81,7 +81,7 @@ describe("when Retries run out", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       maxRetries: 0,
     });
 
@@ -166,7 +166,7 @@ describe("resuming a failed Upload", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const failed = await batch.start();
@@ -186,7 +186,7 @@ describe("resuming a failed Upload", () => {
       transport: createFakeTransport(),
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const snapshot = await batch.start();
@@ -203,7 +203,7 @@ describe("resuming a failed Upload", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       maxRetries: 0,
     });
 

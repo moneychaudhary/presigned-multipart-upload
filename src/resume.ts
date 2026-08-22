@@ -82,7 +82,15 @@ export interface ResumeSpec {
 
 export interface CreateResumedBatchOptions extends Omit<BatchOptions, "files"> {
   store: RecordStore;
-  resume: ResumeSpec[];
+  /**
+   * Which interrupted Uploads to take up.
+   *
+   * `"all"` picks up everything recoverable without involving the user — that
+   * is, every Record whose File Handle still works. Records needing the file
+   * re-selected are skipped, because only the application can ask for it; list
+   * them with `listResumable` and pass explicit specs to handle those.
+   */
+  resume: ResumeSpec[] | "all";
 }
 
 /**
@@ -99,7 +107,14 @@ export const createResumedBatch = async (
   const platform = options.platform ?? browserPlatform();
   const seed: UploadState[] = [];
 
-  for (const spec of options.resume) {
+  const specs =
+    options.resume === "all"
+      ? (await listResumable({ store: options.store, platform, recordTtlMs: options.recordTtlMs }))
+          .filter((found) => found.recovery === "handle")
+          .map((found) => ({ id: found.id }))
+      : options.resume;
+
+  for (const spec of specs) {
     const record = await options.store.get(spec.id);
     if (record === null) {
       throw uploadError("NOT_RESUMABLE", `No Upload Record for ${spec.id}.`);
@@ -113,8 +128,10 @@ export const createResumedBatch = async (
     state.parts = planParts({
       size: record.file.size,
       partSize: record.partSize,
-      minPartSize: options.minPartSize ?? 1,
-      maxParts: options.maxParts ?? 10_000,
+      // The Record already holds a plan that the provider accepted, so the
+      // limits are not re-litigated here.
+      minPartSize: 1,
+      maxParts: Number.MAX_SAFE_INTEGER,
     });
 
     // Mark what already landed so the Resume sends only what is missing.

@@ -12,7 +12,7 @@ const build = (platform: ReturnType<typeof createFakePlatform>, tuning = {}) =>
     transport: createFakeTransport(),
     platform,
     partSize: 10 * KB,
-    minPartSize: 1,
+    provider: { minPartSize: 1 },
     concurrency: 1,
     ...tuning,
   });
@@ -76,7 +76,7 @@ describe("losing connectivity", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const run = batch.start();

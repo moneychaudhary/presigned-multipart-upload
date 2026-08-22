@@ -5,6 +5,20 @@ create the multipart upload, and does not finalise it. Those three things are
 yours, because they are the points where authorisation, quota and object naming
 belong — on your server, not in the browser.
 
+::: tip You may not need to write this
+If your backend speaks JSON at three conventional endpoints, `httpTransport`
+implements all of it for you — including the `response.ok` checks and passing
+the abort signal through:
+
+```ts
+import { httpTransport } from "presigned-multipart-upload";
+const transport = httpTransport({ baseUrl: "/api/uploads" });
+```
+
+Read on for what those endpoints must do, and for the case where your API does
+not fit the shape.
+:::
+
 That is the whole contract:
 
 ```ts

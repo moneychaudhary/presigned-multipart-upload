@@ -10,7 +10,7 @@ const opts = (platform: ReturnType<typeof createFakePlatform>, extra = {}) => ({
   transport: createFakeTransport(),
   platform,
   partSize: 10 * KB,
-  minPartSize: 1,
+  provider: { minPartSize: 1 },
   ...extra,
 });
 
@@ -83,7 +83,7 @@ describe("enforcing the Connection Budget", () => {
       transport,
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     const snapshot = await batch.start();

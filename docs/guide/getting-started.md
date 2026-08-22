@@ -18,72 +18,66 @@ they are covered in full in [the backend contract](/guide/backend-contract).
 
 Everything below assumes they exist.
 
-## A complete client
+## The short version
+
+If your backend speaks JSON at three conventional endpoints, that is the whole
+client:
 
 ```ts
-import { createBatch } from "presigned-multipart-upload";
+import { createBatch, httpTransport } from "presigned-multipart-upload";
 
-const json = { "Content-Type": "application/json" };
+const batch = createBatch({
+  files: [...selectedFiles],
+  transport: httpTransport({ baseUrl: "/api/uploads" }),
+});
 
-// fetch resolves on 4xx and 5xx. Without this, a failing endpoint looks like
-// success — and a complete that "succeeds" marks the upload done and discards
-// its resume record for an object that was never finalised.
-const ok = async (response: Response) => {
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response;
-};
+batch.subscribe((snapshot) => render(snapshot));
 
+const settled = await batch.start();
+if (settled.status === "failed") await batch.resume();
+```
+
+`httpTransport` posts to `/api/uploads`, `/api/uploads/complete` and
+`/api/uploads/abort`, checks every response, and passes the abort signal
+through. Point it elsewhere with `paths`, and add auth with `headers`:
+
+```ts
+httpTransport({
+  baseUrl: "/api/uploads",
+  paths: { complete: "/finish", abort: "/cancel" },
+  // A function is called per request, so a refreshed token is picked up.
+  headers: () => ({ Authorization: `Bearer ${auth.token()}` }),
+});
+```
+
+## Writing the transport yourself
+
+Use this when your API does not fit the shape above. The three functions are all
+the library needs; see [the backend contract](/guide/backend-contract) for what
+each must do.
+
+```ts
 const transport = {
-  // Open a multipart upload and hand back one presigned URL per part.
   open: async (file, ctx) => {
     const response = await fetch("/api/uploads", {
       method: "POST",
-      headers: json,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: file.name,
         size: file.size,
-        type: file.type,
         partCount: ctx.partCount,
-        // Present only when taking up an upload that already exists.
         resumeFrom: ctx.resumeFrom,
       }),
-      // Pass the signal through so cancelling mid-open actually aborts.
       signal: ctx.signal,
     });
-    return (await ok(response)).json(); // { key, uploadId, urls }
+    // fetch resolves on 4xx and 5xx; without this a failing endpoint looks
+    // like success, and a "successful" complete discards the resume record.
+    if (!response.ok) throw new Error(`open failed: ${response.status}`);
+    return response.json();
   },
-
-  complete: async ({ key, uploadId, parts }) =>
-    ok(
-      await fetch("/api/uploads/complete", {
-        method: "POST",
-        headers: json,
-        body: JSON.stringify({ key, uploadId, parts }),
-      }),
-    ),
-
-  abort: async ({ key, uploadId }) =>
-    fetch("/api/uploads/abort", {
-      method: "POST",
-      headers: json,
-      body: JSON.stringify({ key, uploadId }),
-    }),
+  complete: async (args) => { /* POST, and check response.ok */ },
+  abort: async (args) => { /* POST */ },
 };
-
-const batch = createBatch({ files: [...selectedFiles], transport });
-
-const unsubscribe = batch.subscribe((snapshot) => {
-  render(snapshot); // status, progress, per-upload and per-part detail
-});
-
-const settled = await batch.start();
-
-if (settled.status === "failed") {
-  // Nothing was thrown away. Pick up from the parts that never landed.
-  await batch.resume();
-}
-
-unsubscribe();
 ```
 
 ## What you get back
@@ -150,11 +144,17 @@ Each returns an unsubscribe function.
 ## One file is a batch of one
 
 There is no separate single-file API. Pass one file and the batch has one
-upload; nothing else changes.
+upload, and reach it with `file()` rather than indexing:
 
 ```ts
 const batch = createBatch({ files: [file], transport });
+await batch.start();
+
+batch.file().progress.percent;   // the sole upload
+batch.file().status;
 ```
+
+`file()` throws if the batch holds anything other than exactly one upload.
 
 ## Before you ship
 

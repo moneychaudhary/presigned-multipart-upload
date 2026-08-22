@@ -13,7 +13,7 @@ const run = async (platformOptions: FakePlatformOptions, tuning = {}) => {
     transport,
     platform,
     partSize: 10 * KB,
-    minPartSize: 1,
+    provider: { minPartSize: 1 },
     ...tuning,
   });
   const snapshot = await batch.start();
@@ -106,7 +106,7 @@ describe("the backoff ladder", () => {
       transport: createFakeTransport(),
       platform,
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
       retryBaseMs: 250,
     });
 

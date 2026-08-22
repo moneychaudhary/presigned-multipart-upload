@@ -9,7 +9,7 @@ const base = (transport = createFakeTransport(), platform = createFakePlatform()
   transport,
   platform,
   partSize: 10 * KB,
-  minPartSize: 1,
+  provider: { minPartSize: 1 },
 });
 
 describe("a misbehaving subscriber", () => {

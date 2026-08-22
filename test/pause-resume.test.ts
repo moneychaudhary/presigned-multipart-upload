@@ -35,7 +35,7 @@ const build = (platform: ReturnType<typeof createFakePlatform>, transport = crea
     transport,
     platform,
     partSize: 10 * KB,
-    minPartSize: 1,
+    provider: { minPartSize: 1 },
     concurrency: 2,
   }),
 });
@@ -202,7 +202,7 @@ describe("resuming after a pause", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.start();
@@ -219,7 +219,7 @@ describe("resuming after a pause", () => {
       transport,
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await batch.start();
@@ -234,7 +234,7 @@ describe("resuming after a pause", () => {
       transport: createFakeTransport(),
       platform: createFakePlatform(),
       partSize: 10 * KB,
-      minPartSize: 1,
+      provider: { minPartSize: 1 },
     });
 
     await expect(batch.resume("nope")).rejects.toMatchObject({ code: "NOT_RESUMABLE" });

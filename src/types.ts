@@ -183,13 +183,34 @@ export interface BatchEvents {
 
 export type EventName = keyof BatchEvents;
 
+export interface ProviderLimits {
+  /** Smallest Part accepted, except for the last. */
+  minPartSize?: number;
+  /** Most Parts accepted in one upload. */
+  maxParts?: number;
+}
+
+const MIB = 1024 * 1024;
+
+/** Named provider limits. All S3-compatible providers share S3's numbers. */
+export const PROVIDERS = {
+  s3: { minPartSize: 5 * MIB, maxParts: 10_000 },
+  r2: { minPartSize: 5 * MIB, maxParts: 10_000 },
+  b2: { minPartSize: 5 * MIB, maxParts: 10_000 },
+  minio: { minPartSize: 5 * MIB, maxParts: 10_000 },
+  wasabi: { minPartSize: 5 * MIB, maxParts: 10_000 },
+} as const satisfies Record<string, Required<ProviderLimits>>;
+
 export interface UploadTuning {
   /** Bytes per Part. Default 10 MiB. */
   partSize?: number;
-  /** Smallest Part the provider accepts, except for the last. Default 5 MiB. */
-  minPartSize?: number;
-  /** Most Parts the provider accepts. Default 10,000. */
-  maxParts?: number;
+  /**
+   * Which storage provider's limits apply. These are facts about the provider,
+   * not preferences — grouping them keeps them out of the way of the knobs you
+   * might actually want to turn. Default "s3", which suits every
+   * S3-compatible provider.
+   */
+  provider?: ProviderLimits | keyof typeof PROVIDERS;
   /** Parts in flight across the whole Batch. Default 5. */
   concurrency?: number;
   /** Retries after the first Attempt, per Part. Default 3 — so 4 tries in all. */
@@ -241,6 +262,11 @@ export interface BatchController {
   pause: (uploadId?: string) => Promise<BatchSnapshot>;
   /** Discard. Tears the Upload down at the provider; terminal. */
   cancel: (uploadId?: string) => Promise<BatchSnapshot>;
+  /**
+   * The sole Upload's snapshot, for the common case of one file. Throws when
+   * the Batch holds anything other than exactly one.
+   */
+  file: () => UploadSnapshot;
   getSnapshot: () => BatchSnapshot;
   subscribe: (listener: (snapshot: BatchSnapshot) => void) => () => void;
   on: <T extends EventName>(type: T, handler: (payload: BatchEvents[T]) => void) => () => void;

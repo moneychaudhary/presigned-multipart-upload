@@ -13,8 +13,7 @@ createBatch({
   recordTtlMs,
 
   partSize,
-  minPartSize,
-  maxParts,
+  provider,
   concurrency,
 
   maxRetries,
@@ -57,20 +56,21 @@ parts mean less to re-send when one fails.
 
 The defaults handle files up to about 97 GiB before hitting the part limit.
 
-### `minPartSize`
+### `provider`
 
-`number` — default `5 MiB`
+`"s3" | "r2" | "b2" | "minio" | "wasabi" | { minPartSize?, maxParts? }` — default `"s3"`
 
-The provider's floor for every part except the last. A `partSize` below this is
-rejected with `INVALID_PART_SIZE` before anything is sent. Configurable because
-not every S3-compatible provider uses 5 MiB.
+The storage provider's limits. These are facts about the provider rather than
+preferences, so they live together and out of the way:
 
-### `maxParts`
+- **minimum part size** — the floor for every part except the last. A smaller
+  `partSize` is rejected with `INVALID_PART_SIZE` before anything is sent.
+- **maximum parts** — exceeding it fails with `PART_COUNT_EXCEEDED` and a
+  message suggesting a larger part size.
 
-`number` — default `10 000`
-
-The provider's ceiling. Exceeding it fails with `PART_COUNT_EXCEEDED` and a
-message suggesting a larger part size.
+Every S3-compatible provider currently shares S3's numbers, so the named presets
+are equivalent — they exist so the choice is explicit rather than a thing you
+have to look up. Pass an object for anything unusual.
 
 ### `concurrency`
 
