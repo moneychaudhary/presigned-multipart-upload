@@ -8,3 +8,7 @@ dist/
 CLAUDE.md
 .claude/
 .scratch/
+
+# Working notes — local only, not part of the published package
+docs/
+CONTEXT.md
