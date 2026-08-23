@@ -196,6 +196,22 @@ uploader.on("uploader:settled", ({ status }) => {});
 Each returns an unsubscribe function. `id` is the library's own id — not
 `upload.uploadId`, which is the provider's.
 
+Every status, event name and error code is also exported as a constant, so a
+typo is a compile error rather than a branch that never runs:
+
+```ts
+import { UploaderStatus, UploadEvent, UploadErrorCode } from "presigned-multipart-upload";
+
+if (snapshot.status === UploaderStatus.Succeeded) { /* … */ }
+
+uploader.on(UploadEvent.UploadFailed, ({ error }) => {
+  if (error.code === UploadErrorCode.MissingETag) fixYourCors();
+});
+```
+
+`PartStatus` and `UploadStatus` are there too. The string values are the
+contract, so comparing against `"succeeded"` directly is equally fine.
+
 ---
 
 ## Frameworks
@@ -203,16 +219,14 @@ Each returns an unsubscribe function. `id` is the library's own id — not
 ### React
 
 ```tsx
-import { useMemo } from "react";
-import { createUploader, httpTransport } from "presigned-multipart-upload";
+import { httpTransport } from "presigned-multipart-upload";
 import { useUploader, useUploaderEvent } from "presigned-multipart-upload/react";
 
 const Upload = ({ files }: { files: File[] }) => {
-  const uploader = useMemo(
-    () => createUploader({ files, transport: httpTransport({ baseUrl: "/api/uploads" }) }),
-    [files],
-  );
-  const { snapshot, file, start, pause, resume, cancel } = useUploader(uploader);
+  const { snapshot, uploader, start, pause, resume, cancel } = useUploader({
+    files,
+    transport: httpTransport({ baseUrl: "/api/uploads" }),
+  });
 
   useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
 
@@ -230,18 +244,24 @@ const Upload = ({ files }: { files: File[] }) => {
 };
 ```
 
+The hook owns the uploader and rebuilds it only when the file list changes —
+a different set of files is a different upload, and nothing else is. Every other
+option is read at that moment. Hold your files in state rather than rebuilding
+them each render.
+
 Built on `useSyncExternalStore`, so it re-renders when the upload moves and not
-otherwise. You own the uploader's lifetime — key the memo on whatever makes a
-*new* upload.
+otherwise.
 
 ### Vue
 
 ```ts
 import { useUploader } from "presigned-multipart-upload/vue";
 
-const { snapshot, start, pause, resume, cancel } = useUploader(uploader);
+const { snapshot, start, pause, resume, cancel } = useUploader({ files, transport });
 // snapshot.value.progress.percent
 ```
+
+Setup runs once, so there is no lifetime to guard — pass the options and go.
 
 ### Angular
 
@@ -262,7 +282,9 @@ export class UploadService implements OnDestroy {
 }
 ```
 
-`upload.uploader` is the plain uploader underneath, for `on(...)`.
+Every adapter also accepts an uploader you built yourself with `createUploader`,
+for when several components share one. `.uploader` on the result is the uploader
+underneath, for `on(...)`.
 
 ### Anything else
 
@@ -273,28 +295,22 @@ the readable-store contract as-is. No adapter needed.
 
 ## Resuming after a reload
 
-Two things must survive: the record of what landed, and access to the bytes. The
-library always keeps the first. The second needs a file handle, or the user
-choosing the file again.
+Two things must survive: the record of what landed, and access to the bytes.
+**The record is kept for you**, in IndexedDB, with nothing to configure. The
+bytes need a file handle, or the user choosing the file again.
 
 ```ts
-import {
-  createUploader, createIndexedDbStore, scopeStore,
-  listResumable, resumeUploader,
-} from "presigned-multipart-upload";
-
-const store = scopeStore(createIndexedDbStore(), currentUser.id);
+import { createUploader, listResumable, resumeUploader } from "presigned-multipart-upload";
 
 // Starting: pass the handle where the browser can give one.
 const [handle] = await window.showOpenFilePicker();
-createUploader({ files: [{ file: await handle.getFile(), handle }], transport, store });
+createUploader({ files: [{ file: await handle.getFile(), handle }], transport });
 
 // On the next page load:
-const interrupted = await listResumable({ store });
+const interrupted = await listResumable();
 // → [{ id, file, landedParts, totalParts, recovery: "handle" | "reselect" }]
 
 const uploader = await resumeUploader({
-  store,
   transport,
   resume: await Promise.all(
     interrupted.map(async (u) => ({
@@ -315,11 +331,21 @@ Safari and Firefox have no file handles, nor does any browser for drag-and-drop.
 A re-selected file is checked against the record by **name, size and
 last-modified** before a byte is sent; a mismatch is refused with
 `FINGERPRINT_MISMATCH`. Records expire after 7 days, and are removed as soon as
-an upload succeeds or is cancelled.
+an upload succeeds or is cancelled. A store that fails costs you durable resume
+and nothing else — the upload in flight carries on.
 
-`scopeStore` stops one person on a shared machine resuming another's upload. A
-store that fails costs you durable resume and nothing else — the upload in flight
-carries on.
+**On a shared machine, scope the store to the signed-in user**, or the next
+person sees the last one's interrupted uploads:
+
+```ts
+import { createIndexedDbStore, scopeStore } from "presigned-multipart-upload";
+
+const store = scopeStore(createIndexedDbStore(), currentUser.id);
+createUploader({ files, transport, store });
+await listResumable({ store });
+```
+
+Pass `store: null` to keep no records at all.
 
 ---
 
@@ -392,7 +418,7 @@ re-signing of the parts in flight rather than re-opening the whole upload.
 | `waitWhileOffline` | `true` | Park instead of retrying while offline |
 | `contentType` | file's own | `Content-Type` sent with each part |
 | `urlWindow` | `concurrency × 4` | Parts signed ahead, when `signParts` exists |
-| `store` | — | Where records are kept; omit to lose durable resume |
+| `store` | IndexedDB | Where records are kept; `null` to keep none |
 | `recordTtlMs` | 7 days | How long a record stays resumable |
 | `fingerprint` | all fields | Which fields must match a re-selected file |
 | `classify` | built-in | Replace the rule deciding what is worth retrying |
