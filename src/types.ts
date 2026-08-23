@@ -220,9 +220,8 @@ export interface UploaderSnapshot {
   /**
    * The sole Upload, for the common case of one file; null for any other count.
    *
-   * Derived here rather than in each Adapter, so every framework binding — and
-   * Svelte, which needs no binding — gets it for nothing and none of them has to
-   * decide what "not exactly one" means.
+   * Derived here rather than in each Adapter, so every framework binding gets
+   * it for nothing and none of them has to decide what "not exactly one" means.
    */
   file: UploadSnapshot | null;
 }

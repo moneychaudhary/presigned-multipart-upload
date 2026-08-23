@@ -1,197 +1,80 @@
 # presigned-multipart-upload
 
-Multipart uploads to presigned URLs that retry themselves, park when the network
-drops, and resume from the parts that never landed — in any framework, with no
-runtime dependencies.
+Multipart uploads to S3-compatible storage from the browser, driven by presigned
+URLs your backend mints. Pause, cancel, retry with backoff, and resume from the
+parts that never landed — including after a page reload.
+
+Zero runtime dependencies. React, Vue, Angular, or nothing.
 
 ```bash
 npm install presigned-multipart-upload
 ```
 
-One package, whatever you build with. It installs **nothing else** — verified by
-installing it into an empty project: one package, zero dependencies. React, Vue,
-Angular and rxjs are *optional* peers, so npm never pulls them in, and there is
-no per-framework package or install flag to remember.
-
-Pick your framework at the **import**, not at the install:
+One package for every framework — it installs nothing else. React, Vue, Angular
+and rxjs are optional peers. You pick your framework at the **import**:
 
 ```ts
-import { createUploader } from "presigned-multipart-upload";           // core, no framework
+import { createUploader } from "presigned-multipart-upload";          // core
 import { useUploader } from "presigned-multipart-upload/react";
 import { useUploader } from "presigned-multipart-upload/vue";
-import { createAngularUploader } from "presigned-multipart-upload/angular";
+import { createUploader } from "presigned-multipart-upload/angular";  // signals + rxjs
 ```
-
-Import only the core and no framework code enters your bundle. Svelte needs no
-import at all — `uploader.subscribe` already *is* the readable-store contract.
-
-**Contents** · [Why](#why) · [Quick start](#quick-start) · [Backend contract](#the-backend-contract) · [What you get back](#what-you-get-back) · [Cancel, pause, resume](#cancel-pause-and-resume) · [Retry](#retry-and-backoff) · [Durable resume](#durable-resume) · [Very large files](#very-large-files) · [Frameworks](#frameworks) · [Options](#options) · [Errors](#errors) · [Bucket setup](#bucket-setup) · [Glossary](#glossary)
-
----
-
-## Why
-
-Uploading a large file from a browser is a solved problem right up until
-something goes wrong, and something always goes wrong: a laptop sleeps, a train
-enters a tunnel, a proxy resets a connection, a presigned URL expires while four
-gigabytes are still in flight, someone closes the tab at 90%.
-
-Most implementations fail the whole file when one part drops, tear the upload
-down on first error so the bytes that *did* land are discarded, and mint their
-URLs once so a long upload cannot outlive them.
-
-This is the machinery for the part after "it works on a good connection".
-
-**What it does**
-
-- **Retries transient failures** with exponential backoff and full jitter, on a
-  per-part budget. Failures that cannot succeed on a retry fail immediately.
-- **Parks when offline** rather than spending the retry budget, and wakes when
-  connectivity returns.
-- **Recovers from expired URLs** by re-opening for fresh ones, repeatedly if a
-  long upload needs it — while a genuine authorisation failure still terminates.
-- **Leaves failed uploads open** so one `resume()` continues from the parts that
-  never landed, with earlier ETags intact.
-- **Survives a page reload**, via a File System Access handle where the browser
-  supports one and re-selection with a fingerprint check where it does not.
-- **Cancels immediately** and tears down at the provider — distinctly from pause,
-  which keeps the upload alive.
-- **Respects the browser's connection cap** with one queue across the whole batch.
-
-**What it does not do**
-
-- Sign anything. It consumes presigned URLs; it never holds your credentials.
-- Depend on a storage SDK, or on anything else at runtime.
-- Ship UI. No drop zones, no progress bars — just state to render.
 
 ---
 
 ## Quick start
 
-If your backend speaks JSON at three conventional endpoints, this is the whole
-client:
-
 ```ts
 import { createUploader, httpTransport } from "presigned-multipart-upload";
 
 const uploader = createUploader({
-  files: [...selectedFiles],
+  files: [file],
   transport: httpTransport({ baseUrl: "/api/uploads" }),
 });
 
-uploader.subscribe((snapshot) => render(snapshot));
+uploader.subscribe((snapshot) => {
+  console.log(snapshot.progress.percent, snapshot.status);
+});
 
 const settled = await uploader.start();
+
 if (settled.status === "failed") {
-  await uploader.resume(); // picks up from the parts that never landed
+  await uploader.resume(); // continues from the parts that never landed
 }
 ```
 
-`httpTransport` posts to `/api/uploads`, `/api/uploads/complete` and
-`/api/uploads/abort`, checks every response, and passes the abort signal through.
-
-```ts
-httpTransport({
-  baseUrl: "/api/uploads",
-  paths: { complete: "/finish", abort: "/cancel" },
-  // A function is called per request, so a refreshed token is picked up.
-  headers: () => ({ Authorization: `Bearer ${auth.token()}` }),
-  credentials: "include",
-});
-```
-
-**One file is a batch of one.** There is no separate single-file API; reach the
-sole upload with `file()`:
-
-```ts
-const uploader = createUploader({ files: [file], transport });
-await uploader.start();
-
-snapshot.file?.progress.percent;
-snapshot.file?.status;
-```
+`start()` resolves when everything has settled, and does not throw — a failure is
+reported on the snapshot, so one bad file cannot take the others down.
 
 ---
 
-## The backend contract
+## Your backend
 
-The library sends part bytes to presigned URLs. It does not sign them, create
-the multipart upload, or finalise it. Those three things are yours, because they
-are where authorisation, quota and object naming belong.
+The library sends part bytes to presigned URLs. It never holds storage
+credentials, so creating the upload, finalising it and tearing it down are yours.
+Three endpoints:
 
-```ts
-interface Transport {
-  open(file, ctx): Promise<{ key: string; uploadId: string; urls?: string[] }>;
-  // Optional; see "Very large files". Signs only the parts named.
-  signParts?({ key, uploadId, partNumbers, signal }): Promise<Record<number, string>>;
-  complete({ key, uploadId, parts }): Promise<unknown>;
-  abort({ key, uploadId }): Promise<unknown>;
-}
-```
-
-### `open`
-
-Called on **two occasions**, and always told which:
+| Endpoint | Does |
+| --- | --- |
+| `POST /api/uploads` | Create the multipart upload; return `{ key, uploadId, urls }` |
+| `POST /api/uploads/complete` | Finalise it from the parts and ETags given |
+| `POST /api/uploads/abort` | Tear it down |
 
 ```ts
-open(file, { partCount, partSize, resumeFrom, signal })
-```
-
-- **`resumeFrom` undefined** — create a new multipart upload, return its id.
-- **`resumeFrom` present** — do *not* create a second one. Return the `uploadId`
-  you were given plus a **fresh** set of presigned URLs for the same upload.
-
-Both occasions must return usable URLs: a URL minted an hour ago may not be
-honoured now, and re-opening is how a long upload survives its own URL expiry.
-
-> **`urls.length` must equal `partCount`.** Too few and parts have nowhere to go;
-> too many usually means a stale list, which would misalign every part. Both are
-> rejected before any byte is sent.
-
-> **Verify `resumeFrom` before trusting it.** It arrives from the client. Check
-> the key belongs to the caller, or one user could obtain signed write access to
-> another's upload.
-
-### `complete`
-
-Called once every part has landed. Parts arrive **sorted ascending**, each with
-the ETag the provider returned, quotes included.
-
-### `abort`
-
-Called when an upload is **cancelled**. It is *not* called when retries run out —
-that upload is deliberately left open so it can be resumed. See
-[bucket setup](#bucket-setup).
-
-### Node
-
-```ts
-import {
-  S3Client, CreateMultipartUploadCommand, UploadPartCommand,
-  CompleteMultipartUploadCommand, AbortMultipartUploadCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-const s3 = new S3Client({ region: "us-east-1" });
-
 app.post("/api/uploads", async (req, res) => {
-  const { name, size, partCount, resumeFrom } = req.body;
-  await assertQuota(req.user, size);
+  const { name, partCount, resumeFrom } = req.body;
 
-  if (resumeFrom && !ownsKey(req.user, resumeFrom.key)) {
-    return res.status(403).json({ error: "Not your upload" });
-  }
-
-  const key = resumeFrom?.key ?? `users/${req.user.id}/${crypto.randomUUID()}/${name}`;
+  // A resume must reuse the upload it was given, never create a second one.
+  const key = resumeFrom?.key ?? `uploads/${crypto.randomUUID()}/${name}`;
   const uploadId =
     resumeFrom?.uploadId ??
-    (await s3.send(new CreateMultipartUploadCommand({ Bucket: BUCKET, Key: key }))).UploadId;
+    (await s3.send(new CreateMultipartUploadCommand({ Bucket, Key: key }))).UploadId;
 
   const urls = await Promise.all(
     Array.from({ length: partCount }, (_, i) =>
       getSignedUrl(
         s3,
-        new UploadPartCommand({ Bucket: BUCKET, Key: key, UploadId: uploadId, PartNumber: i + 1 }),
+        new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: i + 1 }),
         { expiresIn: 3600 },
       ),
     ),
@@ -202,494 +85,136 @@ app.post("/api/uploads", async (req, res) => {
 
 app.post("/api/uploads/complete", async (req, res) => {
   const { key, uploadId, parts } = req.body;
-  await s3.send(new CompleteMultipartUploadCommand({
-    Bucket: BUCKET, Key: key, UploadId: uploadId,
-    MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag })) },
-  }));
+  await s3.send(
+    new CompleteMultipartUploadCommand({
+      Bucket,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag })),
+      },
+    }),
+  );
   res.json({ ok: true });
 });
 
 app.post("/api/uploads/abort", async (req, res) => {
   const { key, uploadId } = req.body;
-  await s3.send(new AbortMultipartUploadCommand({ Bucket: BUCKET, Key: key, UploadId: uploadId }));
+  await s3.send(new AbortMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId }));
   res.json({ ok: true });
 });
 ```
 
-### Python
+Three rules:
 
-```python
-import uuid
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-import boto3
+- **Return exactly `partCount` URLs, in part order.** Any other count is rejected
+  rather than uploading to the wrong places.
+- **On `resumeFrom`, return the `uploadId` you were given.** Creating a second
+  upload would splice parts of two uploads into one object. The library checks.
+- **Verify `resumeFrom` belongs to the caller.** It arrives from the client.
 
-s3 = boto3.client("s3", region_name="us-east-1")
-BUCKET = "my-bucket"
-router = APIRouter()
+Not JSON at those paths? Implement `Transport` yourself — three functions, same
+shapes.
 
+### Bucket CORS
 
-class ResumeFrom(BaseModel):
-    key: str
-    uploadId: str
+Without `ETag` exposed, every part fails with `MISSING_ETAG`.
 
-
-class OpenRequest(BaseModel):
-    name: str
-    size: int
-    partCount: int
-    resumeFrom: ResumeFrom | None = None
-
-
-@router.post("/api/uploads")
-def open_upload(body: OpenRequest, user=Depends(current_user)):
-    assert_quota(user, body.size)
-
-    if body.resumeFrom:
-        # Arrives from the client, so it must be checked before it is trusted.
-        if not owns_key(user, body.resumeFrom.key):
-            raise HTTPException(403, "Not your upload")
-        key, upload_id = body.resumeFrom.key, body.resumeFrom.uploadId
-    else:
-        key = f"users/{user.id}/{uuid.uuid4()}/{body.name}"
-        upload_id = s3.create_multipart_upload(Bucket=BUCKET, Key=key)["UploadId"]
-
-    urls = [
-        s3.generate_presigned_url(
-            "upload_part",
-            Params={"Bucket": BUCKET, "Key": key, "UploadId": upload_id, "PartNumber": n},
-            ExpiresIn=3600,
-        )
-        # Part numbers start at 1, and there must be exactly partCount of them.
-        for n in range(1, body.partCount + 1)
-    ]
-    return {"key": key, "uploadId": upload_id, "urls": urls}
-
-
-class Part(BaseModel):
-    partNumber: int
-    eTag: str
-
-
-class CompleteRequest(BaseModel):
-    key: str
-    uploadId: str
-    parts: list[Part]
-
-
-@router.post("/api/uploads/complete")
-def complete_upload(body: CompleteRequest, user=Depends(current_user)):
-    if not owns_key(user, body.key):
-        raise HTTPException(403, "Not your upload")
-    s3.complete_multipart_upload(
-        Bucket=BUCKET, Key=body.key, UploadId=body.uploadId,
-        MultipartUpload={
-            "Parts": [{"PartNumber": p.partNumber, "ETag": p.eTag} for p in body.parts]
-        },
-    )
-    return {"ok": True}
-
-
-@router.post("/api/uploads/abort")
-def abort_upload(body: CompleteRequest, user=Depends(current_user)):
-    if not owns_key(user, body.key):
-        raise HTTPException(403, "Not your upload")
-    s3.abort_multipart_upload(Bucket=BUCKET, Key=body.key, UploadId=body.uploadId)
-    return {"ok": True}
+```json
+[{
+  "AllowedOrigins": ["https://your-app.example"],
+  "AllowedMethods": ["PUT"],
+  "AllowedHeaders": ["*"],
+  "ExposeHeaders": ["ETag"]
+}]
 ```
 
-Any S3-compatible provider works — R2, MinIO, B2, Wasabi, Ceph. The library
-never imports a storage SDK; yours does.
+Add a lifecycle rule to delete incomplete multipart uploads after ~7 days.
+Abandoned parts are billed and do not show up in a bucket listing.
 
 ---
 
-## What you get back
-
-`start()`, `resume()`, `pause()` and `cancel()` all resolve to a snapshot, and
-`subscribe()` hands you the same shape whenever it changes.
+## Controls
 
 ```ts
-interface UploaderSnapshot {
-  status: "idle" | "uploading" | "succeeded" | "failed" | "cancelled" | "paused";
-  progress: { loaded: number; total: number; percent: number };
-  uploads: UploadSnapshot[];
-}
+const { id } = uploader.getSnapshot().uploads[0];
 
-interface UploadSnapshot {
-  id: string;
-  file: { name: string; size: number; type: string; lastModified: number };
-  status:
-    | "pending" | "opening" | "uploading" | "completing"
-    | "succeeded" | "failed" | "cancelled" | "paused";
-  progress: { loaded: number; total: number; percent: number };
-  parts: PartSnapshot[];
-  key: string | null;
-  uploadId: string | null;
-  error: { code: string; message: string } | null;
-  /** True when a Resume would have work to do. */
-  resumable: boolean;
-}
-
-interface PartSnapshot {
-  partNumber: number;
-  start: number;
-  end: number;
-  size: number;
-  status: "pending" | "uploading" | "landed" | "failed";
-  loaded: number;
-  attempts: number;
-  eTag: string | null;
-}
+await uploader.pause();     // everything; pass an id for one upload
+await uploader.pause(id);
+await uploader.resume();
+await uploader.cancel();
 ```
 
-Snapshot identity changes only when something actually changed, so binding one
-straight to a render is cheap.
-
-**Batch status is derived by precedence, never uniformity.** Anything still
-moving makes the batch `uploading`. Once settled: **failed → paused → cancelled
-→ succeeded**. A batch holding one paused and one cancelled upload reports
-`paused`, because there is still work a person can pick up.
-
-### States, not moments
-
-Rendering "upload failed" from a snapshot is right; firing a toast from one is
-not — you would fire it again on every later render. Moments are events:
-
-```ts
-uploader.on("part:landed", ({ id, partNumber }) => {});
-uploader.on("part:retrying", ({ partNumber, attempt, delayMs }) => {});
-uploader.on("upload:succeeded", ({ id }) => {});
-uploader.on("upload:failed", ({ id, error }) => {});
-uploader.on("upload:cancelled", ({ id }) => {});
-uploader.on("upload:paused", ({ id }) => {});
-uploader.on("uploader:settled", ({ status }) => {});
-```
-
-`id` is the library's own identifier for an upload — `snapshot.uploads[n].id`,
-and what `resume`, `pause` and `cancel` take. Not `uploadId`, which on a snapshot
-means the storage provider's multipart id.
-
-Each returns an unsubscribe function.
-
----
-
-## Cancel, pause and resume
-
-Three verbs. The difference is between discarding work and deferring it.
-
-| Verb | Stops in flight | Tears down at provider | Can continue later |
+| | Stops in flight | Tells your backend to abort | Resumable |
 | --- | --- | --- | --- |
 | **Pause** | Yes | No | Yes |
 | **Cancel** | Yes | Yes | **No — terminal** |
 | **Resume** | — | — | Continues from what is missing |
 
-```ts
-const { id } = uploader.getSnapshot().uploads[0];
-
-await uploader.pause();            // everything
-await uploader.pause(id);          // one upload, siblings keep going
-await uploader.cancel();
-await uploader.resume();
-```
-
-Upload ids are minted per upload rather than being positional, so they stay
-unique across batches, tabs and later page sessions — which is what stops one
-upload's resume record overwriting another's. Take them off the snapshot; never
-construct one.
-
-Cancel is **terminal**; resuming a cancelled upload is refused with
-`NOT_RESUMABLE`. An upload that already succeeded is never torn down.
-
-**Resume** re-opens for fresh URLs, skips parts that already landed (keeping
-their ETags), and resets attempt counts so unfinished parts get a full retry
-budget. It is a harmless no-op on a succeeded upload.
-
-```ts
-const stuck = uploader.getSnapshot().uploads.filter((u) => u.resumable);
-if (stuck.length > 0) showRetryBanner({ onRetry: () => uploader.resume() });
-```
-
-Uploads succeed and fail independently — one file exhausting its retries leaves
-its siblings running.
+Pausing is immediate, not "once the current part finishes". Take ids off the
+snapshot — never construct one.
 
 ---
 
-## Retry and backoff
+## Reading state
 
-Retry is **automatic** and happens inside a single part's budget. It is not the
-same thing as resume, which a person triggers.
-
-| Failure | Verdict | Why |
-| --- | --- | --- |
-| Connection failure | Retry | The request never reached anything |
-| Timeout | Retry | Same, detected by the clock |
-| `429` | Retry | Throttling is temporary by definition |
-| `5xx` | Retry | The provider's problem, usually brief |
-| `403` / `401` | Re-open once | Almost always an expired presigned URL |
-| Other `4xx` | Fatal | Retrying a malformed request wastes time |
-| Missing ETag | Fatal | A CORS misconfiguration; repetition cannot fix it |
-
-Fatal failures fail **immediately**, without the backoff ladder.
-
-**The 403 case.** Treated as an expired URL rather than a permission problem,
-because expiry is far more common mid-upload. The library re-opens for fresh
-URLs and tries again. A second 403 with nothing landing in between is fatal —
-that is a real authorisation failure. If parts *did* land in between, the latch
-resets, so a multi-hour transfer can outlive one-hour URLs repeatedly.
-
-**Backoff** is exponential with **full jitter** — random across the whole window
-rather than a fixed base plus a random addition:
-
-```
-delay = random() * min(retryMaxMs, retryBaseMs * 2 ** attempt)
-```
-
-When a connection drops, every part in flight fails at the same instant. With a
-fixed base they would all wait the same time and retry in lockstep, dropping the
-connection again. With the defaults the windows are 0–500 ms, 0–1000 ms, 0–2000 ms.
-
-The budget is **per part**, not shared.
-
-**Going offline** is handled separately: the library parks, waits for the
-`online` event, and carries on. Parked time costs no attempts, so a laptop
-asleep for an hour does not wake with its budget spent. Set
-`waitWhileOffline: false` to fail fast instead.
-
-**Replacing the rule:**
+`subscribe` hands you an immutable snapshot whose identity changes only when
+something changed:
 
 ```ts
-import { defaultClassifier } from "presigned-multipart-upload";
-
-createUploader({
-  files, transport,
-  classify: (error, ctx) =>
-    (error as { status?: number }).status === 409 ? "retry" : defaultClassifier(error, ctx),
+const stop = uploader.subscribe((snapshot) => {
+  snapshot.status;           // "idle" | "uploading" | "succeeded" | "failed" | "paused" | "cancelled"
+  snapshot.progress.percent; // 0–100
+  snapshot.file;             // the sole upload when there is exactly one, else null
+  snapshot.uploads;          // one entry per file
 });
 ```
 
-Return `"retry"`, `"reopen"` or `"fatal"`.
-
----
-
-## Durable resume
-
-An upload can survive the page it started on. This needs **two** things to
-survive, and they are different problems:
-
-1. **The record** — which object, which upload id, which parts landed. The
-   library can always keep this.
-2. **The bytes** — a `File` cannot be serialised, so persisting the record alone
-   gives you a perfect description of an upload you cannot continue.
+Each upload carries:
 
 ```ts
-import { createUploader, createIndexedDbStore } from "presigned-multipart-upload";
-
-const store = createIndexedDbStore();
-const uploader = createUploader({ files, transport, store });
+upload.id;                // pass this to pause / resume / cancel
+upload.file;              // { name, size, type, lastModified }
+upload.status;            // "pending" | "opening" | "uploading" | "completing" | …
+upload.progress.percent;
+upload.parts;             // { partNumber, status, loaded, attempts, eTag }
+upload.error;             // { code, message } | null
+upload.resumable;         // whether resume() would do anything
+upload.key, upload.uploadId;
 ```
 
-IndexedDB, not localStorage — it is the only web storage that can hold a file
-handle.
-
-### The two recovery paths
-
-**With a file handle** (Chrome, Edge — File System Access API):
+Snapshots are for rendering. Moments — a toast, an analytics ping — are events:
 
 ```ts
-const [handle] = await window.showOpenFilePicker();
-const file = await handle.getFile();
-
-createUploader({ files: [{ file, handle }], transport, store });
+uploader.on("part:landed", ({ id, partNumber }) => {});
+uploader.on("part:retrying", ({ id, partNumber, attempt, delayMs }) => {});
+uploader.on("upload:succeeded", ({ id }) => {});
+uploader.on("upload:failed", ({ id, error }) => {});
+uploader.on("uploader:settled", ({ status }) => {});
 ```
 
-**By re-selecting** — Safari and Firefox, drag-and-drop, or a refused permission
-prompt. The user picks the file again and the library verifies it first.
-
-### Finding and continuing
-
-```ts
-import { listResumable, resumeUploader } from "presigned-multipart-upload";
-
-const interrupted = await listResumable({ store });
-// each: { id, file, landedParts, totalParts, recovery: "handle" | "reselect" }
-```
-
-`recovery` tells you which UI to show — you never test browser support yourself.
-
-Pick up everything recoverable without involving the user:
-
-```ts
-const uploader = await resumeUploader({ store, transport, resume: "all" });
-await uploader.resume();
-```
-
-Or handle re-selection explicitly:
-
-```ts
-const specs = await Promise.all(
-  interrupted.map(async (upload) => ({
-    id: upload.id,
-    file: upload.recovery === "reselect" ? await askUserFor(upload.file) : undefined,
-  })),
-);
-
-const uploader = await resumeUploader({ store, transport, resume: specs });
-await uploader.resume();
-```
-
-### The fingerprint
-
-Before a single byte is sent, the offered file is checked against the record on
-**name, size and last-modified**. A mismatch refuses with `FINGERPRINT_MISMATCH`
-and sends nothing — parts of two different files must never be spliced into one
-object. Metadata only, deliberately: hashing a multi-gigabyte file on every
-resume would cost more than it protects.
-
-```ts
-resumeUploader({ store, transport, resume: specs, fingerprint: { name: false } });
-```
-
-### Records
-
-Records expire after seven days and are cleaned up by `listResumable`. **Both
-calls take `recordTtlMs` separately** — pass it to each:
-
-```ts
-const TTL = 3 * 24 * 60 * 60 * 1000;
-createUploader({ files, transport, store, recordTtlMs: TTL });
-listResumable({ store, recordTtlMs: TTL });
-```
-
-They are removed as soon as an upload succeeds or is cancelled.
-
-**On shared devices**, scope them:
-
-```ts
-import { scopeStore, createIndexedDbStore } from "presigned-multipart-upload";
-const store = scopeStore(createIndexedDbStore(), user.id);
-```
-
----
-
-## Very large files
-
-Nothing here changes the API, but four things scale with the file and it is
-worth knowing which.
-
-### Part size is chosen for you
-
-S3 and every compatible provider cap an upload at **10,000 parts**. That makes a
-fixed part size a ceiling on file size: at 10 MiB per part you cannot exceed
-~97 GiB, and a 300 GiB file would be refused outright.
-
-So `partSize` is derived per file when you do not set it — 10 MiB, or the
-smallest whole MiB that fits the file inside the part limit, whichever is
-larger:
-
-| File | Chosen part size | Parts |
-| --- | --- | --- |
-| 40 MiB | 10 MiB | 4 |
-| 8 GiB | 10 MiB | 820 |
-| 300 GiB | 31 MiB | 9,910 |
-| 2 TiB | 210 MiB | 9,987 |
-
-Set `partSize` yourself only to override that, and note what it costs below.
-Anything the provider cannot accept is rejected before your `open` is called, so
-a file that will never upload never leaves a dangling multipart upload behind.
-
-### Memory is `partSize` × `concurrency`
-
-Parts are read from the file lazily, so the file itself is never in memory. The
-**parts in flight** are. With the default `concurrency` of 5, a 300 GiB file at
-31 MiB parts holds roughly **155 MiB** — fine on a desktop, tight on an old
-phone.
-
-That is the tradeoff to weigh if you are tempted to raise `partSize` for
-throughput. Lower `concurrency` in the same breath:
-
-```ts
-createUploader({ files, transport, partSize: 128 * 1024 * 1024, concurrency: 2 });
-```
-
-### Sign parts on demand, not all at once
-
-This is the cost most people miss. By default `open` must return `partCount`
-URLs, and for a 300 GiB file that is ~9,900 of them — several megabytes of JSON,
-and several thousand signatures computed per request. Signing is local and cheap
-(no call to AWS), but it is not free, and **it happens again on every refresh**.
-
-Give the Transport a fourth function and the library signs only what it is about
-to send:
-
-```ts
-const transport = httpTransport({
-  baseUrl: "/api/uploads",
-  paths: { sign: "/sign" },
-});
-```
-
-`open` then returns just `{ key, uploadId }`, and `POST /api/uploads/sign`
-receives `{ key, uploadId, partNumbers }` and returns `{ urls: { 41: "…", … } }`.
-The library keeps a window of `urlWindow` parts signed ahead (default: four times
-`concurrency`), and an expired URL costs a re-signing of the parts in flight
-rather than a re-opening of all 9,900. See
-[the backend contract](#the-backend-contract).
-
-Under a few hundred parts it is not worth the endpoint. Past a thousand, it is.
-Raising `partSize` is the other lever, and they compose: 128 MiB parts turn
-9,910 URLs into 2,400.
-
-### It will outlive its URLs
-
-300 GiB at 100 Mbps is around seven hours; presigned URLs typically last one. The
-library handles this — a 403 on a part triggers a **refresh** for fresh URLs and
-the run continues from where it was. Parts in flight share their URLs' expiry, so
-five parts meeting it at once cost one refresh between them, not five. Where you
-supply `signParts` the refresh re-signs those parts; where you do not, it re-opens.
-Two things on your side make it work:
-
-- Return **fresh URLs** every time, including when `resumeFrom` is present.
-  Replaying a stale list is the one way to break this.
-- Set your bucket's lifecycle rule generously enough that a legitimate long
-  upload is not swept away mid-flight. See [bucket setup](#bucket-setup).
-
-### What the store actually holds
-
-A common worry, and the answer is reassuring: **the record does not scale with
-the bytes.** It holds the key, the upload id, the part size, and one
-`{ partNumber, eTag }` pair per landed part — around 60 bytes each. A 300 GiB
-file in ~9,900 parts is roughly **600 KB**, against an IndexedDB quota measured
-in gigabytes.
-
-The file's bytes are never copied into IndexedDB. What is stored is a *file
-handle* — a reference the browser resolves back to the file on disk.
-
-One consequence worth knowing: a record is rewritten whole. Above 200 parts,
-writes are coalesced to at most one every two seconds rather than one per landed
-part. If the tab dies inside that window, the parts that landed in it are
-re-sent on resume — a few seconds of work, not a few hours.
+Each returns an unsubscribe function. `id` is the library's own id — not
+`upload.uploadId`, which is the provider's.
 
 ---
 
 ## Frameworks
-
-All optional peers — importing the core pulls in no framework, and the core
-works perfectly on its own.
 
 ### React
 
 ```tsx
 import { useMemo } from "react";
 import { createUploader, httpTransport } from "presigned-multipart-upload";
-import { useUploader } from "presigned-multipart-upload/react";
+import { useUploader, useUploaderEvent } from "presigned-multipart-upload/react";
 
-const Uploader = ({ files }: { files: File[] }) => {
-  // You own the uploader. Key the memo on whatever makes a *new* upload.
+const Upload = ({ files }: { files: File[] }) => {
   const uploader = useMemo(
     () => createUploader({ files, transport: httpTransport({ baseUrl: "/api/uploads" }) }),
     [files],
   );
   const { snapshot, file, start, pause, resume, cancel } = useUploader(uploader);
+
+  useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
 
   return (
     <>
@@ -700,245 +225,203 @@ const Uploader = ({ files }: { files: File[] }) => {
         <button onClick={() => resume()}>Continue</button>
       )}
       <button onClick={() => cancel()}>Cancel</button>
-      {file && <span>{file.file.name} — {file.status}</span>}
     </>
   );
 };
 ```
 
-`useUploader(controller)` also accepts an existing controller. For moments rather
-than states:
+Built on `useSyncExternalStore`, so it re-renders when the upload moves and not
+otherwise. You own the uploader's lifetime — key the memo on whatever makes a
+*new* upload.
 
-```tsx
-import { useUploaderEvent } from "presigned-multipart-upload/react";
-useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
+### Vue
+
+```ts
+import { useUploader } from "presigned-multipart-upload/vue";
+
+const { snapshot, start, pause, resume, cancel } = useUploader(uploader);
+// snapshot.value.progress.percent
 ```
 
 ### Angular
 
+Takes the options directly — a service constructs once, so there is nothing to
+own across re-renders:
+
 ```ts
-import { createAngularUploader } from "presigned-multipart-upload/angular";
+import { createUploader } from "presigned-multipart-upload/angular";
 
 @Injectable()
 export class UploadService implements OnDestroy {
-  private transport = inject(UPLOAD_TRANSPORT);
-  private upload = createAngularUploader(createUploader({ files: [], transport: this.transport }));
+  private readonly upload = createUploader({ files, transport });
+  readonly snapshot = this.upload.snapshot;    // Signal
+  readonly snapshot$ = this.upload.snapshot$;  // Observable
 
-  readonly snapshot = this.upload.snapshot;   // Signal
-  readonly snapshot$ = this.upload.snapshot$; // Observable, same state
+  start = () => this.upload.start();
   ngOnDestroy() { this.upload.destroy(); }
 }
 ```
 
-Signals work identically in zone-based and zoneless apps; the Observable is a
-view onto the same state, not a second source of truth.
+`upload.uploader` is the plain uploader underneath, for `on(...)`.
 
-### Vue
+### Anything else
 
-```vue
-<script setup lang="ts">
-import { useUploader } from "presigned-multipart-upload/vue";
-const { snapshot, start, pause, resume, cancel } = useUploader(uploader);
-</script>
+`uploader.subscribe` calls back immediately and returns an unsubscriber, which is
+the readable-store contract as-is. No adapter needed.
 
-<template>
-  <progress :value="snapshot.progress.percent" max="100" />
-</template>
+---
+
+## Resuming after a reload
+
+Two things must survive: the record of what landed, and access to the bytes. The
+library always keeps the first. The second needs a file handle, or the user
+choosing the file again.
+
+```ts
+import {
+  createUploader, createIndexedDbStore, scopeStore,
+  listResumable, resumeUploader,
+} from "presigned-multipart-upload";
+
+const store = scopeStore(createIndexedDbStore(), currentUser.id);
+
+// Starting: pass the handle where the browser can give one.
+const [handle] = await window.showOpenFilePicker();
+createUploader({ files: [{ file: await handle.getFile(), handle }], transport, store });
+
+// On the next page load:
+const interrupted = await listResumable({ store });
+// → [{ id, file, landedParts, totalParts, recovery: "handle" | "reselect" }]
+
+const uploader = await resumeUploader({
+  store,
+  transport,
+  resume: await Promise.all(
+    interrupted.map(async (u) => ({
+      id: u.id,
+      file: u.recovery === "reselect" ? await askUserToPickAgain(u.file) : undefined,
+    })),
+  ),
+});
+await uploader.resume();
 ```
 
-`snapshot` is a `shallowRef` — snapshots are replaced whole, so deep reactivity
-would walk every part on every tick for nothing.
+`resume: "all"` picks up everything recoverable without involving the user, and
+skips whatever needs re-selection.
 
-### Svelte, and anything else
+`recovery` tells you which UI to show — you never test browser support yourself.
+Safari and Firefox have no file handles, nor does any browser for drag-and-drop.
 
-No adapter needed. The core's `subscribe` already satisfies Svelte's readable
-store contract:
+A re-selected file is checked against the record by **name, size and
+last-modified** before a byte is sent; a mismatch is refused with
+`FINGERPRINT_MISMATCH`. Records expire after 7 days, and are removed as soon as
+an upload succeeds or is cancelled.
 
-```svelte
-<progress value={$uploader.progress.percent} max="100" />
+`scopeStore` stops one person on a shared machine resuming another's upload. A
+store that fails costs you durable resume and nothing else — the upload in flight
+carries on.
+
+---
+
+## Retry, and expired URLs
+
+Retries are automatic, with exponential backoff and full jitter. `resume()` is
+the user-triggered one. The library never conflates them.
+
+| Response | What happens |
+| --- | --- |
+| Network error, timeout, `429`, `5xx` | Retry with backoff |
+| `403` / `401` | Refresh the URLs, then retry — expiry is the common cause |
+| Other `4xx` | Fail the part |
+
+Presigned URLs usually last an hour; a large upload does not. When they expire,
+every part in flight meets it at once and they share **one** refresh between
+them, so a transfer can outlive its URLs many times over. If fresh URLs are
+refused too, that is a real authorisation failure and the upload ends.
+
+While the browser reports itself offline, parts park rather than burn their retry
+budget — a laptop asleep for an hour wakes with it intact.
+
+---
+
+## Large files
+
+Part size is chosen per file when you do not set one: 10 MiB, or the smallest
+whole MiB that keeps the file inside the provider's 10,000-part limit.
+
+| File | Part size | Parts |
+| --- | --- | --- |
+| 40 MiB | 10 MiB | 4 |
+| 8 GiB | 10 MiB | 820 |
+| 300 GiB | 31 MiB | 9,910 |
+| 2 TiB | 210 MiB | 9,987 |
+
+Memory in flight is roughly `partSize × concurrency` — about 155 MiB for a
+300 GiB file at the defaults.
+
+**Past about a thousand parts, sign on demand.** By default `open` returns a URL
+per part, which for 9,910 parts is megabytes of JSON, most of it expiring before
+it is reached. Add a fourth endpoint and the library signs a window just ahead of
+what it is sending:
+
+```ts
+httpTransport({ baseUrl: "/api/uploads", paths: { sign: "/sign" } });
+
+// POST /api/uploads/sign  { key, uploadId, partNumbers: [41, 42, …] }
+// →                       { urls: { 41: "https://…", 42: "https://…" } }
 ```
 
-The same three-method surface (`subscribe`, `getSnapshot`, `on`) is the
-intersection of what every framework's reactivity wants — an adapter for Solid,
-Qwik or Lit is about five lines.
+`open` then only has to return `{ key, uploadId }`, and an expired URL costs a
+re-signing of the parts in flight rather than re-opening the whole upload.
 
 ---
 
 ## Options
 
-Everything has a working default. Only `files` and `transport` are required.
-
-| Option | Default | What it does |
+| Option | Default | |
 | --- | --- | --- |
-| `files` | — | `Array<File \| { file, handle? }>`. The handle enables durable resume. |
-| `transport` | — | Your three backend functions. |
-| `partSize` | chosen per file | Bytes per part. Left unset it is derived from the file — see [very large files](#very-large-files). |
-| `provider` | `"s3"` | `"s3" \| "r2" \| "b2" \| "minio" \| "wasabi" \| { minPartSize, maxParts, maxPartSize, maxObjectSize }` |
-| `concurrency` | 5 | Parts in flight across the **whole batch**. |
-| `maxRetries` | 3 | Retries *after* the first attempt, per part. |
-| `retryBaseMs` | 500 | Backoff window, doubled per attempt. |
-| `retryMaxMs` | 15000 | Backoff ceiling. |
-| `partTimeoutMs` | 0 | Per-attempt timeout; 0 disables. |
-| `waitWhileOffline` | `true` | Park instead of spending retries. |
-| `classify` | built-in | Replace the retry rule. |
-| `urlWindow` | `concurrency * 4` | Parts signed ahead, when the Transport supplies `signParts`. |
-| `contentType` | file's own | Sent with each part. |
-| `store` | none | Enables durable resume. |
-| `recordTtlMs` | 7 days | How long a record stays resumable. |
-| `fingerprint` | all three | Which fields must match on re-selection. |
-| `platform` | browser | The single door to the outside world. |
-
-**`concurrency`** deserves a note. Browsers cap simultaneous connections per
-host — six in Chrome and Firefox. Exceeding it does not fail loudly: the surplus
-queues below the network layer where it reports no progress and can time out
-having never been sent. One queue serves the whole batch, so every part the
-library believes is in flight really is on the wire.
-
-**`provider`** groups facts about the storage service, as opposed to
-preferences. All S3-compatible providers currently share S3's numbers; the
-presets exist so the choice is explicit rather than something to look up.
-
-**`platform`** is how everything is made testable — sending bytes, time,
-randomness, connectivity, file handles. Nothing in the core reaches past it.
-
-```ts
-import { browserPlatform } from "presigned-multipart-upload";
-createUploader({ files, transport, platform: { ...browserPlatform(), random: () => 0.5 } });
-```
+| `files` | — | `File[]`, or `{ file, handle }[]` for durable resume |
+| `transport` | — | Your open / complete / abort |
+| `partSize` | per file | Bytes per part |
+| `provider` | `"s3"` | `"s3"`, `"r2"`, `"b2"`, `"minio"`, `"wasabi"`, or explicit limits |
+| `concurrency` | `5` | Parts in flight across all files |
+| `maxRetries` | `3` | Retries per part after the first attempt |
+| `retryBaseMs` | `500` | Backoff base, doubled per attempt |
+| `retryMaxMs` | `15000` | Backoff ceiling |
+| `partTimeoutMs` | `0` | Per-attempt timeout; `0` disables |
+| `waitWhileOffline` | `true` | Park instead of retrying while offline |
+| `contentType` | file's own | `Content-Type` sent with each part |
+| `urlWindow` | `concurrency × 4` | Parts signed ahead, when `signParts` exists |
+| `store` | — | Where records are kept; omit to lose durable resume |
+| `recordTtlMs` | 7 days | How long a record stays resumable |
+| `fingerprint` | all fields | Which fields must match a re-selected file |
+| `classify` | built-in | Replace the rule deciding what is worth retrying |
 
 ---
 
 ## Errors
 
-Errors carry a stable `code`, so you can branch on cause without matching on
-message text. Thrown errors are `UploadError` instances.
+`error.code` is stable; messages are not. Branch on the code.
 
-| Code | Meaning | What to do |
-| --- | --- | --- |
-| `MISSING_ETAG` | Response carried no readable ETag | Add `ETag` to CORS `ExposeHeaders` |
-| `INVALID_PART_SIZE` | `partSize` outside the provider's floor or ceiling | Adjust it, or leave it unset |
-| `PART_COUNT_EXCEEDED` | File needs more parts than allowed | Leave `partSize` unset, or raise it |
-| `FILE_TOO_LARGE` | Above the provider's single-object limit | Nothing to do — 5 TiB is the ceiling |
-| `EMPTY_FILE` | Zero bytes | Use an ordinary single `PUT` |
-| `URL_COUNT_MISMATCH` | Transport returned the wrong number of URLs, or opened a second upload on a resume | Fix the backend |
-| `URL_MISSING` | `signParts` returned no URL for a part it was asked to sign | Fix the backend |
-| `TRANSPORT_REQUEST_FAILED` | Your own API returned non-2xx | Fix the backend |
-| `UNKNOWN` | Nothing recognised the failure | Report it |
-| `RETRIES_EXHAUSTED` | A part used its whole budget | `resume()` — nothing was discarded |
-| `SEND_FAILED` | Fatal by the classifier | Inspect the cause |
-| `TRANSPORT_OPEN_FAILED` | Your `open` rejected | Nothing to tear down |
-| `TRANSPORT_COMPLETE_FAILED` | Your `complete` rejected | `resume()` retries finalising |
-| `NOT_RESUMABLE` | Cancelled, or no such upload/record | Start over |
-| `FILE_REQUIRED` | Bytes unrecoverable unaided | Show a file picker |
-| `FINGERPRINT_MISMATCH` | Wrong file offered on resume | Offer to start over |
-
-`FILE_REQUIRED` is expected on Safari and Firefox — it is a branch to handle,
-not an error to log.
-
-> **`fetch` does not reject on 5xx.** If you hand-write the transport and skip
-> `response.ok`, a failing `complete` looks like success: the upload is marked
-> succeeded and its resume record deleted, for an object never finalised.
-> `httpTransport` handles this for you.
+| Code | Means |
+| --- | --- |
+| `MISSING_ETAG` | **Expose `ETag` in your bucket's CORS** |
+| `RETRIES_EXHAUSTED` | A part used its whole budget — offer `resume()` |
+| `SEND_FAILED` | A part failed against storage |
+| `EMPTY_FILE` | A file with no bytes |
+| `INVALID_PART_SIZE` | Below the provider's minimum or above its maximum |
+| `PART_COUNT_EXCEEDED` | Your `partSize` needs more than 10,000 parts |
+| `FILE_TOO_LARGE` | Above what the provider will assemble |
+| `URL_COUNT_MISMATCH` | Wrong number of URLs, or a resume opened a different upload |
+| `URL_MISSING` | `signParts` skipped a part it was asked to sign |
+| `TRANSPORT_OPEN_FAILED` | Your open endpoint failed |
+| `TRANSPORT_COMPLETE_FAILED` | Your complete endpoint failed |
+| `TRANSPORT_REQUEST_FAILED` | Your API returned non-2xx |
+| `NOT_RESUMABLE` | Nothing to resume |
+| `FINGERPRINT_MISMATCH` | The re-selected file is a different one |
+| `FILE_REQUIRED` | Resume needs the bytes; ask the user to pick the file |
+| `UNKNOWN` | Nothing recognised the failure — worth reporting |
 
 ---
-
-## Bucket setup
-
-Two pieces of configuration are required, and both fail confusingly when missing.
-
-### CORS — expose the ETag header
-
-Every part upload returns an `ETag`, and finalising needs all of them. Browsers
-hide response headers unless the server lists them.
-
-```json
-[{
-  "AllowedOrigins": ["https://app.example.com"],
-  "AllowedMethods": ["PUT", "GET", "HEAD"],
-  "AllowedHeaders": ["*"],
-  "ExposeHeaders": ["ETag"],
-  "MaxAgeSeconds": 3000
-}]
-```
-
-Without it, parts upload perfectly and finalising then rejects them. The library
-detects this specific case and fails immediately with `MISSING_ETAG`.
-
-### Lifecycle rule — clean up abandoned parts
-
-This library **leaves failed uploads open on purpose**; that is what makes resume
-possible. The cost is that an upload nobody returns to sits there billing you,
-invisible in a normal object listing.
-
-```json
-{
-  "Rules": [{
-    "ID": "abort-incomplete-multipart-uploads",
-    "Status": "Enabled",
-    "Filter": { "Prefix": "" },
-    "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
-  }]
-}
-```
-
-Match it to your `recordTtlMs`. Check what is already there with
-`aws s3api list-multipart-uploads --bucket my-bucket`.
-
-### Limits
-
-| Limit | Value | Enforced? |
-| --- | --- | --- |
-| Minimum part size | 5 MiB, except the last | Yes — `INVALID_PART_SIZE` |
-| Maximum parts | 10,000 | Yes — `PART_COUNT_EXCEEDED` |
-| Maximum part size | 5 GiB | Yes — `INVALID_PART_SIZE` |
-| Maximum object | 5 TiB | Yes — `FILE_TOO_LARGE` |
-
-All four are checked **before** the transport is asked to open anything, so a
-file that cannot be uploaded never leaves a dangling multipart upload behind.
-They are the S3 numbers, which every S3-compatible provider meets; pass
-`provider` as an object to state different ones.
-
----
-
-## Glossary
-
-Words used precisely throughout. Where everyday speech blurs two together, the
-library does not.
-
-- **Upload** — one file's journey to a stored object.
-- **Part** — one contiguous byte range, uploaded independently, numbered from 1.
-- **Uploader** — what you hold: `createUploader(...)`. Drives a set of uploads
-  together; a single file is just a set of one.
-- **Presigned URL** — minted by *your* backend, authorising one operation for a
-  limited time. This library only consumes them.
-- **Transport** — your three functions: open, complete, abort.
-- **Opening** — making an upload ready for parts. Serves two occasions, and is
-  always told which.
-- **Connection Budget** — the ceiling on parts in flight across the whole batch.
-- **Attempt** — one transmission of one part's bytes.
-- **Retry** — a further attempt, decided by the library. **Automatic.**
-- **Resume** — a **user-triggered** restart from whichever parts have not landed.
-- **Cancel** — user-triggered, **terminal**. Discards the work.
-- **Pause** — user-triggered halt that keeps the upload alive. Defers the work.
-- **Durable Resume** — resuming an upload that outlived its page.
-- **Upload Record** — the persisted account of what landed.
-- **File Handle** — a durable reference to the file on disk.
-- **Fingerprint** — the check that offered bytes are the same file.
-- **Core / Adapter / Platform** — the engine, its framework bindings, and its
-  single door to the outside world.
-
----
-
-## Development
-
-```bash
-npm test                   # 156 tests, no network, no container
-npm run typecheck
-npm run build
-npm run test:integration   # needs MinIO; npm run minio:up
-npm run docs:dev           # the same documentation as a browsable site
-```
-
-## Licence
 
 MIT

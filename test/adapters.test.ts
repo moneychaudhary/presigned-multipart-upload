@@ -4,7 +4,7 @@ import React from "react";
 import { effectScope } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
-import { createAngularUploader } from "../src/angular.js";
+import { createUploader as createAngularUploader } from "../src/angular.js";
 import { createUploader } from "../src/index.js";
 import { useUploader, useUploaderEvent } from "../src/react.js";
 import type { Uploader } from "../src/index.js";
@@ -162,10 +162,9 @@ describe("the Vue adapter", () => {
 
 describe("the Core's subscribe, used directly", () => {
   it("satisfies the readable-store contract", async () => {
-    // No adapter ships for Svelte because none is needed: a readable store is
-    // just a subscribe that calls back immediately and returns an unsubscriber,
-    // which is exactly this. The docs promise `$batch` works unaided, so the
-    // promise is tested.
+    // subscribe calls back immediately and returns an unsubscriber. Frameworks
+    // whose store contract is exactly that can bind to the Core with no adapter,
+    // so the shape is pinned here.
     const controller = build();
     const seen: string[] = [];
 
@@ -184,24 +183,31 @@ describe("the Core's subscribe, used directly", () => {
 });
 
 describe("the Angular adapter", () => {
+  const buildAngular = (): ReturnType<typeof createAngularUploader> =>
+    createAngularUploader({
+      files: [makeFile(25 * KB)],
+      transport: createFakeTransport(),
+      platform: createFakePlatform(),
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+    });
+
   it("exposes a signal that tracks the snapshot", async () => {
-    const controller = build();
-    const upload = createAngularUploader(controller);
+    const upload = buildAngular();
 
     expect(upload.snapshot().status).toBe("idle");
-    await controller.start();
+    await upload.start();
     expect(upload.snapshot().status).toBe("succeeded");
   });
 
   it("emits equivalently through the Observable interop", async () => {
-    const controller = build();
-    const upload = createAngularUploader(controller);
+    const upload = buildAngular();
 
     const seen: string[] = [];
     const subscription = upload.snapshot$.subscribe((snapshot) => seen.push(snapshot.status));
 
     expect(seen).toEqual(["idle"]);
-    await controller.start();
+    await upload.start();
 
     expect(seen.at(-1)).toBe("succeeded");
     expect(seen.at(-1)).toBe(upload.snapshot().status);
@@ -210,19 +216,19 @@ describe("the Angular adapter", () => {
   });
 
   it("stops tracking once destroyed", async () => {
-    const controller = build();
-    const upload = createAngularUploader(controller);
+    const upload = buildAngular();
 
     upload.destroy();
-    await controller.start();
+    await upload.start();
 
     expect(upload.snapshot().status).toBe("idle");
   });
 
-  it("exposes the Batch's actions", () => {
-    const upload = createAngularUploader(build());
+  it("exposes the Uploader's actions, and the Uploader itself for events", () => {
+    const upload = buildAngular();
     expect(typeof upload.start).toBe("function");
     expect(typeof upload.resume).toBe("function");
+    expect(typeof upload.uploader.on).toBe("function");
   });
 });
 

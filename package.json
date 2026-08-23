@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Framework-independent multipart uploads to presigned URLs, with automatic retry, cancel, pause and resume from the parts that never landed.",
   "license": "MIT",
-  "homepage": "https://moneychaudhary.github.io/presigned-multipart-upload/",
+  "homepage": "https://github.com/moneychaudhary/presigned-multipart-upload#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/moneychaudhary/presigned-multipart-upload.git"

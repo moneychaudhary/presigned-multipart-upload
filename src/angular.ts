@@ -1,13 +1,16 @@
 import { signal, type Signal } from "@angular/core";
 import { Observable } from "rxjs";
 
-import type { Uploader, UploaderSnapshot } from "./types.js";
+import { createUploader as createCoreUploader } from "./uploader.js";
+import type { Uploader, UploaderOptions, UploaderSnapshot } from "./types.js";
 
 export interface AngularUploader {
   /** Live state, for templates and computed signals. */
   snapshot: Signal<UploaderSnapshot>;
   /** The same state as a stream, for codebases built on RxJS. */
   snapshot$: Observable<UploaderSnapshot>;
+  /** The Uploader itself, for `on` and anything else off the core surface. */
+  uploader: Uploader;
   start: Uploader["start"];
   pause: Uploader["pause"];
   resume: Uploader["resume"];
@@ -17,14 +20,17 @@ export interface AngularUploader {
 }
 
 /**
- * Bind an Uploader to Angular.
+ * Build an Uploader bound to Angular.
  *
- * A factory rather than an @Injectable, so it needs no TestBed and you choose
- * where to provide it. Signals are the primary surface — they behave the same
- * zoned and zoneless; `snapshot$` is a view onto the same state, not a second
- * source of truth.
+ * Takes options rather than a controller — unlike React and Vue, which need the
+ * caller to own the lifetime across re-renders, an Angular service constructs
+ * once, so one call and one import is the whole story. A factory rather than an
+ * @Injectable, so it needs no TestBed and you choose where to provide it.
+ * Signals are the primary surface — they behave the same zoned and zoneless;
+ * `snapshot$` is a view onto the same state, not a second source of truth.
  */
-export const createAngularUploader = (controller: Uploader): AngularUploader => {
+export const createUploader = (options: UploaderOptions): AngularUploader => {
+  const controller = createCoreUploader(options);
   const state = signal<UploaderSnapshot>(controller.getSnapshot());
   const unsubscribe = controller.subscribe((next) => state.set(next));
 
@@ -37,6 +43,7 @@ export const createAngularUploader = (controller: Uploader): AngularUploader => 
   return {
     snapshot: state.asReadonly(),
     snapshot$,
+    uploader: controller,
     start: controller.start,
     pause: controller.pause,
     resume: controller.resume,
