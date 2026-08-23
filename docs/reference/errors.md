@@ -68,6 +68,22 @@ backend that creates a second multipart upload instead of returning the id it wa
 given would leave the library holding ETags from one upload while finalising
 another. The key and upload id coming back are checked against the ones sent.
 
+### `TRANSPORT_REQUEST_FAILED`
+
+A request to *your* API — open, complete, abort, or sign — came back non-2xx.
+
+Distinct from `SEND_FAILED`, which is a part failing against storage. They used
+to share a code, so an adopter could not tell a dead network from a 500 on their
+own `/complete`.
+
+### `UNKNOWN`
+
+Something threw that nothing along the way recognised.
+
+Not an error you should design around — if you see it, the library failed to
+attribute a failure it should have. Worth reporting. It used to be reported as
+`SEND_FAILED`, which named a specific cause that may well have been wrong.
+
 ### `URL_MISSING`
 
 `signParts` was asked to sign a set of parts and returned no URL for one of them.

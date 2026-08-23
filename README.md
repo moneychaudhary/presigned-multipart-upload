@@ -805,6 +805,8 @@ message text. Thrown errors are `UploadError` instances.
 | `EMPTY_FILE` | Zero bytes | Use an ordinary single `PUT` |
 | `URL_COUNT_MISMATCH` | Transport returned the wrong number of URLs, or opened a second upload on a resume | Fix the backend |
 | `URL_MISSING` | `signParts` returned no URL for a part it was asked to sign | Fix the backend |
+| `TRANSPORT_REQUEST_FAILED` | Your own API returned non-2xx | Fix the backend |
+| `UNKNOWN` | Nothing recognised the failure | Report it |
 | `RETRIES_EXHAUSTED` | A part used its whole budget | `resume()` — nothing was discarded |
 | `SEND_FAILED` | Fatal by the classifier | Inspect the cause |
 | `TRANSPORT_OPEN_FAILED` | Your `open` rejected | Nothing to tear down |
