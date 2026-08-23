@@ -4,7 +4,15 @@
 npm install presigned-multipart-upload
 ```
 
-`@angular/core` and `rxjs` are optional peers.
+One package for every framework — no `/angular` package to add, no install flag.
+`@angular/core` and `rxjs` are *optional* peers, so npm does not install them;
+you already have them. The binding lives at a subpath, and that import is the
+only thing that touches Angular:
+
+```ts
+import { createBatch } from "presigned-multipart-upload";          // no Angular
+import { createAngularUpload } from "presigned-multipart-upload/angular";
+```
 
 ## `createAngularUpload`
 

@@ -4,7 +4,21 @@
 npm install presigned-multipart-upload
 ```
 
-React is an optional peer dependency — importing the core never pulls it in.
+That is the whole install, for every framework — one package, no dependencies,
+and nothing framework-specific. There is no separate `/react` package to add and
+no install flag to pass. React is an *optional* peer, so npm does not pull it in;
+you already have it.
+
+The binding lives at a subpath, and that import is the only thing that touches
+React:
+
+```ts
+import { createBatch } from "presigned-multipart-upload";        // no React
+import { useUpload } from "presigned-multipart-upload/react";    // React
+```
+
+Import only the core and React never enters your bundle — the package is marked
+side-effect free, so bundlers drop what you did not reach for.
 
 ## `useUpload`
 

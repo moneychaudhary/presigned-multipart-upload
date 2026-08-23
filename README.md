@@ -8,6 +8,23 @@ runtime dependencies.
 npm install presigned-multipart-upload
 ```
 
+One package, whatever you build with. It installs **nothing else** — verified by
+installing it into an empty project: one package, zero dependencies. React, Vue,
+Angular and rxjs are *optional* peers, so npm never pulls them in, and there is
+no per-framework package or install flag to remember.
+
+Pick your framework at the **import**, not at the install:
+
+```ts
+import { createBatch } from "presigned-multipart-upload";           // core, no framework
+import { useUpload } from "presigned-multipart-upload/react";
+import { useUpload } from "presigned-multipart-upload/vue";
+import { createAngularUpload } from "presigned-multipart-upload/angular";
+```
+
+Import only the core and no framework code enters your bundle. Svelte needs no
+import at all — `batch.subscribe` already *is* the readable-store contract.
+
 **Contents** · [Why](#why) · [Quick start](#quick-start) · [Backend contract](#the-backend-contract) · [What you get back](#what-you-get-back) · [Cancel, pause, resume](#cancel-pause-and-resume) · [Retry](#retry-and-backoff) · [Durable resume](#durable-resume) · [Very large files](#very-large-files) · [Frameworks](#frameworks) · [Options](#options) · [Errors](#errors) · [Bucket setup](#bucket-setup) · [Glossary](#glossary)
 
 ---

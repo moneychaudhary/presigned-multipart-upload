@@ -4,6 +4,15 @@
 npm install presigned-multipart-upload
 ```
 
+One package for every framework — no `/vue` package to add, no install flag. Vue
+is an *optional* peer, so npm does not install it; you already have it. The
+binding lives at a subpath, and that import is the only thing that touches Vue:
+
+```ts
+import { createBatch } from "presigned-multipart-upload";      // no Vue
+import { useUpload } from "presigned-multipart-upload/vue";    // Vue
+```
+
 Vue is an optional peer dependency.
 
 ## `useUpload`

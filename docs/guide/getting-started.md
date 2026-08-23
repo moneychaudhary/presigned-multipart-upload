@@ -6,6 +6,10 @@
 npm install presigned-multipart-upload
 ```
 
+One package for every framework, and it installs nothing else — React, Vue,
+Angular and rxjs are optional peers. You choose your framework at the import
+(`presigned-multipart-upload/react`, `/vue`, `/angular`), not at the install.
+
 There are no runtime dependencies. Framework bindings are optional peers, so
 importing the core pulls in nothing.
 
