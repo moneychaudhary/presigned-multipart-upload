@@ -1,7 +1,5 @@
 node_modules/
 dist/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
 *.log
 *.tgz
 .DS_Store

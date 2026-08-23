@@ -633,7 +633,7 @@ receives `{ key, uploadId, partNumbers }` and returns `{ urls: { 41: "…", … 
 The library keeps a window of `urlWindow` parts signed ahead (default: four times
 `concurrency`), and an expired URL costs a re-signing of the parts in flight
 rather than a re-opening of all 9,900. See
-[the backend contract](/guide/backend-contract#signing-parts-on-demand).
+[the backend contract](#the-backend-contract).
 
 Under a few hundred parts it is not worth the endpoint. Past a thousand, it is.
 Raising `partSize` is the other lever, and they compose: 128 MiB parts turn
