@@ -135,47 +135,74 @@ export interface Transport {
   abort: (args: { key: string; uploadId: string }) => Promise<unknown>;
 }
 
-export type PartStatus = "pending" | "uploading" | "landed" | "failed";
+/*
+ * The values a snapshot reports, each as a constant beside its type.
+ *
+ * `snapshot.status === UploaderStatus.Succeeded` says what it means and a typo
+ * in it is a compile error, where `=== "suceeded"` is a branch that silently
+ * never runs. The types are derived from the constants, so the two cannot
+ * drift; the string values are the contract and are safe to compare against
+ * directly if you prefer.
+ */
 
-export type UploadStatus =
-  | "pending"
-  | "opening"
-  | "uploading"
-  | "completing"
-  | "succeeded"
-  | "failed"
-  | "cancelled"
-  | "paused";
+export const PartStatus = {
+  Pending: "pending",
+  Uploading: "uploading",
+  Landed: "landed",
+  Failed: "failed",
+} as const;
 
-export type UploaderStatus =
-  | "idle"
-  | "uploading"
-  | "succeeded"
-  | "failed"
-  | "cancelled"
-  | "paused";
+export type PartStatus = (typeof PartStatus)[keyof typeof PartStatus];
 
-export type UploadErrorCode =
-  | "EMPTY_FILE"
-  | "INVALID_PART_SIZE"
-  | "PART_COUNT_EXCEEDED"
-  | "FILE_TOO_LARGE"
-  | "URL_COUNT_MISMATCH"
-  | "URL_MISSING"
-  | "MISSING_ETAG"
-  | "RETRIES_EXHAUSTED"
-  | "CANCELLED"
-  | "PAUSED"
-  | "TRANSPORT_OPEN_FAILED"
-  | "TRANSPORT_COMPLETE_FAILED"
-  | "NOT_RESUMABLE"
-  | "FINGERPRINT_MISMATCH"
-  | "FILE_REQUIRED"
-  | "SEND_FAILED"
+export const UploadStatus = {
+  Pending: "pending",
+  Opening: "opening",
+  Uploading: "uploading",
+  Completing: "completing",
+  Succeeded: "succeeded",
+  Failed: "failed",
+  Cancelled: "cancelled",
+  Paused: "paused",
+} as const;
+
+export type UploadStatus = (typeof UploadStatus)[keyof typeof UploadStatus];
+
+export const UploaderStatus = {
+  Idle: "idle",
+  Uploading: "uploading",
+  Succeeded: "succeeded",
+  Failed: "failed",
+  Cancelled: "cancelled",
+  Paused: "paused",
+} as const;
+
+export type UploaderStatus = (typeof UploaderStatus)[keyof typeof UploaderStatus];
+
+export const UploadErrorCode = {
+  EmptyFile: "EMPTY_FILE",
+  InvalidPartSize: "INVALID_PART_SIZE",
+  PartCountExceeded: "PART_COUNT_EXCEEDED",
+  FileTooLarge: "FILE_TOO_LARGE",
+  UrlCountMismatch: "URL_COUNT_MISMATCH",
+  /** `signParts` skipped a Part it was asked to sign. */
+  UrlMissing: "URL_MISSING",
+  MissingETag: "MISSING_ETAG",
+  RetriesExhausted: "RETRIES_EXHAUSTED",
+  Cancelled: "CANCELLED",
+  Paused: "PAUSED",
+  TransportOpenFailed: "TRANSPORT_OPEN_FAILED",
+  TransportCompleteFailed: "TRANSPORT_COMPLETE_FAILED",
   /** A request to the application's own API failed, rather than to storage. */
-  | "TRANSPORT_REQUEST_FAILED"
+  TransportRequestFailed: "TRANSPORT_REQUEST_FAILED",
+  NotResumable: "NOT_RESUMABLE",
+  FingerprintMismatch: "FINGERPRINT_MISMATCH",
+  FileRequired: "FILE_REQUIRED",
+  SendFailed: "SEND_FAILED",
   /** Nothing that understood the failure attributed it. */
-  | "UNKNOWN";
+  Unknown: "UNKNOWN",
+} as const;
+
+export type UploadErrorCode = (typeof UploadErrorCode)[keyof typeof UploadErrorCode];
 
 export interface UploadErrorInfo {
   code: UploadErrorCode;
@@ -245,6 +272,22 @@ export interface UploaderEvents {
 }
 
 export type EventName = keyof UploaderEvents;
+
+/**
+ * The event names, so `on` is called with a constant rather than a literal.
+ *
+ * Checked against `UploaderEvents`, so renaming an event breaks here rather
+ * than at the call site of whoever subscribed to the old name.
+ */
+export const UploadEvent = {
+  PartLanded: "part:landed",
+  PartRetrying: "part:retrying",
+  UploadSucceeded: "upload:succeeded",
+  UploadFailed: "upload:failed",
+  UploadCancelled: "upload:cancelled",
+  UploadPaused: "upload:paused",
+  Settled: "uploader:settled",
+} as const satisfies Record<string, EventName>;
 
 export interface ProviderLimits {
   /** Smallest Part accepted, except for the last. */
@@ -337,8 +380,14 @@ export interface UploaderOptions extends UploadTuning {
   files: UploadFile[];
   transport: Transport;
   platform?: Platform;
-  /** Where Upload Records are kept. Omit to keep none, losing Durable Resume. */
-  store?: RecordStore;
+  /**
+   * Where Upload Records are kept, so an Upload survives a reload.
+   *
+   * Defaults to IndexedDB in the browser and to nothing outside one. Pass
+   * `null` to keep no Records, or a scoped store to keep one person's Uploads
+   * out of the next person's reach.
+   */
+  store?: RecordStore | null;
   /** How long an untouched Record stays resumable. Default 7 days. */
   recordTtlMs?: number;
   /** Which fields must match when a re-selected file is offered for a Resume. */

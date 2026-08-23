@@ -163,3 +163,18 @@ export const createIndexedDbStore = (dbName = DB_NAME): RecordStore => {
     },
   };
 };
+
+/**
+ * The store used when the caller names none.
+ *
+ * IndexedDB wherever the browser has it, and nothing at all where it does not —
+ * server-side rendering, a worker without storage. Durable Resume is then
+ * simply unavailable, which is what naming no store used to give everybody.
+ *
+ * A default rather than an opt-in because the Record is small, expires, holds
+ * no file bytes, and is the whole difference between surviving a reload and
+ * not. Opting out is one word; opting in was a step most callers would only
+ * discover having already lost an upload.
+ */
+export const defaultStore = (): RecordStore | null =>
+  typeof indexedDB === "undefined" ? null : createIndexedDbStore();

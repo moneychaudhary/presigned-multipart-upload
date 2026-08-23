@@ -3,7 +3,7 @@ import { uploadError } from "./errors.js";
 import { createObservable } from "./observable.js";
 import { browserPlatform } from "./platform/browser.js";
 import { createSemaphore } from "./semaphore.js";
-import { DEFAULT_RECORD_TTL_MS, type UploadRecord } from "./store.js";
+import { DEFAULT_RECORD_TTL_MS, defaultStore, type UploadRecord } from "./store.js";
 import { PROVIDERS } from "./types.js";
 import type {
   Uploader,
@@ -117,7 +117,8 @@ interface UploaderInternalOptions extends UploaderOptions {
 
 const buildBatch = (options: UploaderInternalOptions): Uploader => {
   const platform = options.platform ?? browserPlatform();
-  const store = options.store ?? null;
+  // undefined means "you choose"; null means "keep none".
+  const store = options.store === undefined ? defaultStore() : options.store;
   const recordTtlMs = options.recordTtlMs ?? DEFAULT_RECORD_TTL_MS;
 
   // A named provider or explicit limits; "s3" suits every S3-compatible one.
@@ -405,3 +406,16 @@ export const createSeededUploader = (options: UploaderInternalOptions): Uploader
   buildBatch(options);
 
 export const createUploader = (options: UploaderOptions): Uploader => buildBatch(options);
+
+/**
+ * What every framework Adapter accepts: the options, or an Uploader you already
+ * built.
+ *
+ * Options is the ordinary case, and it means an adopter learns one function
+ * instead of two. Passing a built Uploader is for sharing one across components
+ * — a page-wide upload tray bound in several places.
+ */
+export type UploaderSource = UploaderOptions | Uploader;
+
+export const toUploader = (source: UploaderSource): Uploader =>
+  "getSnapshot" in source ? source : createUploader(source);

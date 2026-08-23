@@ -3,7 +3,13 @@ import { uploadError } from "./errors.js";
 import { assertFingerprint } from "./fingerprint.js";
 import { sliceParts } from "./plan.js";
 import { browserPlatform } from "./platform/browser.js";
-import { DEFAULT_RECORD_TTL_MS, isStale, type RecordStore, type UploadRecord } from "./store.js";
+import {
+  DEFAULT_RECORD_TTL_MS,
+  defaultStore,
+  isStale,
+  type RecordStore,
+  type UploadRecord,
+} from "./store.js";
 import { createUploadState, describeFile, type UploadState } from "./upload.js";
 import type { Uploader, UploaderOptions, FileDescriptor, Platform } from "./types.js";
 
@@ -31,7 +37,8 @@ export interface ResumableUpload {
 }
 
 export interface ListResumableOptions {
-  store: RecordStore;
+  /** Defaults to the same store `createUploader` writes to. `null` finds none. */
+  store?: RecordStore | null;
   platform?: Platform;
   recordTtlMs?: number;
 }
@@ -44,10 +51,13 @@ export interface ListResumableOptions {
  * accumulate in browser storage forever.
  */
 export const listResumable = async ({
-  store,
+  store: given,
   platform = browserPlatform(),
   recordTtlMs = DEFAULT_RECORD_TTL_MS,
-}: ListResumableOptions): Promise<ResumableUpload[]> => {
+}: ListResumableOptions = {}): Promise<ResumableUpload[]> => {
+  const store = given === undefined ? defaultStore() : given;
+  if (store === null) return [];
+
   const now = platform.now();
   const records = await store.list();
   const fresh: UploadRecord[] = [];
@@ -84,7 +94,6 @@ export interface ResumeSpec {
 }
 
 export interface ResumeUploaderOptions extends Omit<UploaderOptions, "files"> {
-  store: RecordStore;
   /**
    * Which interrupted Uploads to take up.
    *
@@ -108,17 +117,20 @@ export const resumeUploader = async (
   options: ResumeUploaderOptions,
 ): Promise<Uploader> => {
   const platform = options.platform ?? browserPlatform();
+  const store = options.store === undefined ? defaultStore() : options.store;
   const seed: UploadState[] = [];
 
   const specs =
     options.resume === "all"
-      ? (await listResumable({ store: options.store, platform, recordTtlMs: options.recordTtlMs }))
+      ? (await listResumable({ store, platform, recordTtlMs: options.recordTtlMs }))
           .filter((found) => found.recovery === "handle")
           .map((found) => ({ id: found.id }))
       : options.resume;
 
   for (const spec of specs) {
-    const record = await options.store.get(spec.id);
+    // Named Uploads with nowhere to have been recorded: say so, rather than
+    // handing back an Uploader that quietly holds nothing.
+    const record = store === null ? null : await store.get(spec.id);
     if (record === null) {
       throw uploadError("NOT_RESUMABLE", `No Upload Record for ${spec.id}.`);
     }
@@ -158,7 +170,9 @@ export const resumeUploader = async (
     seed.push(state);
   }
 
-  return createSeededUploader({ ...options, files: [], seed, partSize: options.partSize });
+  // The resolved store, not the given one, so the revived Uploader keeps
+  // writing where the Records were found.
+  return createSeededUploader({ ...options, store, files: [], seed, partSize: options.partSize });
 };
 
 const recoverFile = async (
