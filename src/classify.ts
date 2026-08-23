@@ -14,6 +14,9 @@ export interface ClassifyContext {
 }
 
 const statusOf = (error: unknown): number | null => {
+  // A Platform may throw anything, including null — reading a property off it
+  // would throw here and replace the real failure with a TypeError.
+  if (typeof error !== "object" || error === null) return null;
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" ? status : null;
 };

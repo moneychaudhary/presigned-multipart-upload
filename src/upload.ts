@@ -15,7 +15,7 @@ import type {
 } from "./types.js";
 
 /** What the controller most recently asked this Upload to do. */
-export type Intent = "run" | "pause" | "cancel";
+type Intent = "run" | "pause" | "cancel";
 
 export interface UploadState {
   id: string;
@@ -416,7 +416,7 @@ const sendPartWithRetry = async (
       // decision, not the classifier's — a replacement classifier that always
       // says "reopen" must not be able to loop the Core forever.
       if (verdict === "reopen" && url !== null) {
-        const refreshed = await urls.refresh(url.generation, state.controller!.signal);
+        const refreshed = await urls.refresh(url.generation);
         if (refreshed === null) {
           failPart(
             error instanceof UploadError

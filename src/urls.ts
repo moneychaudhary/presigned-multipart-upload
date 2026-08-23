@@ -33,7 +33,7 @@ export interface PartUrls {
    * is how a genuine authorisation failure is told apart from an expiry: an
    * expiry is fixed by fresh urls, a rejection repeats on them.
    */
-  refresh: (stale: number, signal: AbortSignal) => Promise<number | null>;
+  refresh: (stale: number) => Promise<number | null>;
   /** Whether a Refresh would achieve anything for a Part holding this generation. */
   canRefresh: (stale: number) => boolean;
   /**
@@ -58,7 +58,7 @@ export type UrlMinter = (
   signal: AbortSignal,
 ) => Promise<Record<number, string>>;
 
-export interface PartUrlsOptions {
+interface PartUrlsOptions {
   partCount: number;
   mint: UrlMinter;
   /**

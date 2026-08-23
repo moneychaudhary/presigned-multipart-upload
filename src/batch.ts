@@ -12,7 +12,6 @@ import type {
   BatchOptions,
   BatchSnapshot,
   BatchStatus,
-  PartSnapshot,
   Progress,
   UploadSnapshot,
 } from "./types.js";

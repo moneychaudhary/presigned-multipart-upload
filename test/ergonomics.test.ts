@@ -10,7 +10,6 @@ import {
   httpTransport,
   listResumable,
   PROVIDERS,
-  UploadError,
 } from "../src/index.js";
 import { useUpload } from "../src/react.js";
 import { KB, makeFile } from "./fakes/file.js";

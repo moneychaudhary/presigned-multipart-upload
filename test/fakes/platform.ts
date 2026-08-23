@@ -40,8 +40,6 @@ export interface FakePlatformState {
   peakInFlight: number;
   /** Every delay the Core asked to sleep for, in order. */
   sleeps: number[];
-  /** How many of those were entered with the signal already aborted. */
-  abortedSleeps: number;
 }
 
 export interface FakePlatform extends Platform {
@@ -63,8 +61,6 @@ export interface FakePlatformOptions {
   permissionGranted?: boolean;
   /** Fixed value for now(), so Record staleness is assertable. */
   now?: number;
-  /** Prefix for minted Upload ids. One counter per Platform, as in a real one. */
-  idPrefix?: string;
 }
 
 /** A stand-in for a FileSystemFileHandle: something that can give back a File. */
@@ -82,7 +78,7 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
   const script: Script = options.script ?? (() => ({ kind: "ok" }));
   const randomValues = options.randomValues ?? [0.5];
 
-  const state: FakePlatformState = { calls: [], peakInFlight: 0, sleeps: [], abortedSleeps: 0 };
+  const state: FakePlatformState = { calls: [], peakInFlight: 0, sleeps: [] };
   const attemptsByPart = new Map<string, number>();
   const hung = new Map<string, (outcome: ScriptedOutcome) => void>();
   const onlineListeners = new Set<() => void>();
@@ -174,14 +170,14 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
     sendPart,
     newId: () => {
       nextId += 1;
-      return `${options.idPrefix ?? "upload"}-${nextId}`;
+      return `upload-${nextId}`;
     },
     now: () => options.now ?? 0,
-    sleep: async (ms: number, signal?: AbortSignal) => {
+    // Resolves rather than rejects on abort, which is the obligation the
+    // Platform interface states — a rejecting sleep settles a Pause as a
+    // failure.
+    sleep: async (ms: number) => {
       state.sleeps.push(ms);
-      // Resolves rather than rejects on abort, which is the obligation the
-      // Platform interface states. Recorded so a test can tell the difference.
-      if (signal?.aborted) state.abortedSleeps += 1;
     },
     random: () => {
       const value = randomValues[randomIndex % randomValues.length]!;

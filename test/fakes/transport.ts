@@ -36,8 +36,6 @@ export interface FakeTransportState {
   signs: SignRecord[];
   completes: CompleteRecord[];
   aborts: { key: string; uploadId: string }[];
-  /** Urls handed out by the most recent Opening, in Part order. */
-  lastUrls: string[];
 }
 
 export interface FakeTransport extends Transport {
@@ -45,8 +43,6 @@ export interface FakeTransport extends Transport {
 }
 
 export interface FakeTransportOptions {
-  /** Prefix for generated urls; varies per Opening so freshness is provable. */
-  urlPrefix?: string | ((openIndex: number) => string);
   onOpen?: (ctx: OpenContext, openIndex: number) => void | Promise<void>;
   onComplete?: (record: CompleteRecord) => void | Promise<void>;
   onAbort?: (args: { key: string; uploadId: string }) => void | Promise<void>;
@@ -69,14 +65,12 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
     signs: [],
     completes: [],
     aborts: [],
-    lastUrls: [],
   };
   let openIndex = 0;
 
-  const prefixFor = (index: number): string => {
-    const prefix = options.urlPrefix ?? "https://bucket.example/part";
-    return typeof prefix === "function" ? prefix(index) : `${prefix}-open${index}`;
-  };
+  // The Opening index is in the url, so a test can prove which Opening or
+  // signing a Part was sent on — that is how url freshness is asserted.
+  const prefixFor = (index: number): string => `https://bucket.example/part-open${index}`;
 
   const open = async (file: { name: string }, ctx: OpenContext): Promise<OpenResult> => {
     const index = openIndex;
@@ -101,12 +95,10 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
     }
 
     const count = options.urlCount ? options.urlCount(ctx.partCount) : ctx.partCount;
-    state.lastUrls = Array.from({ length: count }, (_, i) => `${prefixFor(index)}-${i + 1}`);
-
     return {
       key: ctx.resumeFrom?.key ?? `uploads/${file.name}`,
       uploadId: ctx.resumeFrom?.uploadId ?? `s3-upload-${index}`,
-      urls: state.lastUrls,
+      urls: Array.from({ length: count }, (_, i) => `${prefixFor(index)}-${i + 1}`),
     };
   };
 
