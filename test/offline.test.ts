@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
 
 const build = (platform: ReturnType<typeof createFakePlatform>, tuning = {}) =>
-  createBatch({
+  createUploader({
     files: [makeFile(25 * KB)],
     transport: createFakeTransport(),
     platform,
@@ -71,7 +71,7 @@ describe("losing connectivity", () => {
   it("wakes and finishes when connectivity returns", async () => {
     const platform = createFakePlatform({ online: false });
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform,

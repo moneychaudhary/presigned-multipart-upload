@@ -4,14 +4,14 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createBatch,
+  createUploader,
   createMemoryStore,
-  createResumedBatch,
+  resumeUploader,
   httpTransport,
   listResumable,
   PROVIDERS,
 } from "../src/index.js";
-import { useUpload } from "../src/react.js";
+import { useUploader } from "../src/react.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -155,7 +155,7 @@ describe("httpTransport", () => {
 
 describe("provider limits", () => {
   it("defaults to S3's numbers", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(3 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -166,7 +166,7 @@ describe("provider limits", () => {
   });
 
   it("accepts a named provider", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(3 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -177,7 +177,7 @@ describe("provider limits", () => {
   });
 
   it("rejects a Part size below the provider's floor", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(30 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -196,7 +196,7 @@ describe("provider limits", () => {
 
 describe("file(), for the common case of one file", () => {
   it("returns the sole Upload", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -211,7 +211,7 @@ describe("file(), for the common case of one file", () => {
   });
 
   it("is null when the Batch holds more than one", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -223,10 +223,10 @@ describe("file(), for the common case of one file", () => {
   });
 });
 
-describe("useUpload", () => {
+describe("useUploader", () => {
   it("holds one Batch across renders and Opens exactly once", async () => {
     const transport = createFakeTransport();
-    const controller = createBatch({
+    const controller = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -234,18 +234,18 @@ describe("useUpload", () => {
       provider: { minPartSize: 1 },
     });
 
-    let seen: ReturnType<typeof useUpload> | null = null;
+    let seen: ReturnType<typeof useUploader> | null = null;
 
     const View = (): React.ReactElement => {
-      seen = useUpload(controller);
+      seen = useUploader(controller);
       return React.createElement("div", null, seen.snapshot.status);
     };
 
     const { rerender } = render(React.createElement(View));
-    const first = seen!.batch;
+    const first = seen!.uploader;
 
     rerender(React.createElement(View));
-    expect(seen!.batch).toBe(first);
+    expect(seen!.uploader).toBe(first);
 
     await act(async () => {
       await seen!.start();
@@ -256,17 +256,17 @@ describe("useUpload", () => {
   });
 
   it("exposes the sole file directly", async () => {
-    const controller = createBatch({
+    const controller = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
       partSize: 10 * KB,
       provider: { minPartSize: 1 },
     });
-    let seen: ReturnType<typeof useUpload> | null = null;
+    let seen: ReturnType<typeof useUploader> | null = null;
 
     const View = (): React.ReactElement => {
-      seen = useUpload(controller);
+      seen = useUploader(controller);
       return React.createElement("div");
     };
 
@@ -279,7 +279,7 @@ describe("useUpload", () => {
   });
 
   it("still accepts an existing controller", () => {
-    const controller = createBatch({
+    const controller = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -288,8 +288,8 @@ describe("useUpload", () => {
     });
 
     const View = (): React.ReactElement => {
-      const { batch } = useUpload(controller);
-      expect(batch).toBe(controller);
+      const { uploader } = useUploader(controller);
+      expect(uploader).toBe(controller);
       return React.createElement("div");
     };
 
@@ -300,7 +300,7 @@ describe("useUpload", () => {
 describe('resume: "all"', () => {
   const interrupted = async (store: ReturnType<typeof createMemoryStore>) => {
     const file = makeFile(50 * KB);
-    const batch = createBatch({
+    const batch = createUploader({
       files: [{ file, handle: fakeHandle(file) }],
       transport: createFakeTransport(),
       platform: createFakePlatform({
@@ -320,7 +320,7 @@ describe('resume: "all"', () => {
     const store = createMemoryStore();
     await interrupted(store);
 
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: "all",
       transport: createFakeTransport(),
@@ -339,7 +339,7 @@ describe('resume: "all"', () => {
     // A browser with no handle support cannot recover the bytes unaided, so
     // there is nothing to take up without involving the application.
     const platform = createFakePlatform({ handlesSupported: false });
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: "all",
       transport: createFakeTransport(),

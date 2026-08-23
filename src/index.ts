@@ -3,10 +3,10 @@
 // fingerprint comparison) are reachable from source paths for tests, but are
 // not part of the contract.
 
-export { createBatch } from "./batch.js";
+export { createUploader } from "./uploader.js";
 export { httpTransport } from "./http-transport.js";
 export { PROVIDERS } from "./types.js";
-export { createResumedBatch, listResumable } from "./resume.js";
+export { resumeUploader, listResumable } from "./resume.js";
 export { browserPlatform } from "./platform/browser.js";
 export { createIndexedDbStore, createMemoryStore, scopeStore } from "./store.js";
 export { defaultClassifier } from "./classify.js";
@@ -15,7 +15,7 @@ export { UploadError } from "./errors.js";
 export type { Classifier, ClassifyContext, RetryVerdict } from "./classify.js";
 export type { FingerprintOptions } from "./fingerprint.js";
 export type {
-  CreateResumedBatchOptions,
+  ResumeUploaderOptions,
   ListResumableOptions,
   Recovery,
   ResumableUpload,
@@ -24,12 +24,12 @@ export type {
 export type { RecordStore, UploadRecord } from "./store.js";
 export type { HttpTransportOptions } from "./http-transport.js";
 export type {
-  BatchController,
-  BatchEvents,
-  BatchFile,
-  BatchOptions,
-  BatchSnapshot,
-  BatchStatus,
+  Uploader,
+  UploaderEvents,
+  UploadFile,
+  UploaderOptions,
+  UploaderSnapshot,
+  UploaderStatus,
   CompletedPart,
   EventName,
   FileDescriptor,

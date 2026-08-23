@@ -16,14 +16,14 @@ no per-framework package or install flag to remember.
 Pick your framework at the **import**, not at the install:
 
 ```ts
-import { createBatch } from "presigned-multipart-upload";           // core, no framework
-import { useUpload } from "presigned-multipart-upload/react";
-import { useUpload } from "presigned-multipart-upload/vue";
-import { createAngularUpload } from "presigned-multipart-upload/angular";
+import { createUploader } from "presigned-multipart-upload";           // core, no framework
+import { useUploader } from "presigned-multipart-upload/react";
+import { useUploader } from "presigned-multipart-upload/vue";
+import { createAngularUploader } from "presigned-multipart-upload/angular";
 ```
 
 Import only the core and no framework code enters your bundle. Svelte needs no
-import at all — `batch.subscribe` already *is* the readable-store contract.
+import at all — `uploader.subscribe` already *is* the readable-store contract.
 
 **Contents** · [Why](#why) · [Quick start](#quick-start) · [Backend contract](#the-backend-contract) · [What you get back](#what-you-get-back) · [Cancel, pause, resume](#cancel-pause-and-resume) · [Retry](#retry-and-backoff) · [Durable resume](#durable-resume) · [Very large files](#very-large-files) · [Frameworks](#frameworks) · [Options](#options) · [Errors](#errors) · [Bucket setup](#bucket-setup) · [Glossary](#glossary)
 
@@ -72,18 +72,18 @@ If your backend speaks JSON at three conventional endpoints, this is the whole
 client:
 
 ```ts
-import { createBatch, httpTransport } from "presigned-multipart-upload";
+import { createUploader, httpTransport } from "presigned-multipart-upload";
 
-const batch = createBatch({
+const uploader = createUploader({
   files: [...selectedFiles],
   transport: httpTransport({ baseUrl: "/api/uploads" }),
 });
 
-batch.subscribe((snapshot) => render(snapshot));
+uploader.subscribe((snapshot) => render(snapshot));
 
-const settled = await batch.start();
+const settled = await uploader.start();
 if (settled.status === "failed") {
-  await batch.resume(); // picks up from the parts that never landed
+  await uploader.resume(); // picks up from the parts that never landed
 }
 ```
 
@@ -104,8 +104,8 @@ httpTransport({
 sole upload with `file()`:
 
 ```ts
-const batch = createBatch({ files: [file], transport });
-await batch.start();
+const uploader = createUploader({ files: [file], transport });
+await uploader.start();
 
 snapshot.file?.progress.percent;
 snapshot.file?.status;
@@ -309,7 +309,7 @@ never imports a storage SDK; yours does.
 `subscribe()` hands you the same shape whenever it changes.
 
 ```ts
-interface BatchSnapshot {
+interface UploaderSnapshot {
   status: "idle" | "uploading" | "succeeded" | "failed" | "cancelled" | "paused";
   progress: { loaded: number; total: number; percent: number };
   uploads: UploadSnapshot[];
@@ -356,13 +356,13 @@ Rendering "upload failed" from a snapshot is right; firing a toast from one is
 not — you would fire it again on every later render. Moments are events:
 
 ```ts
-batch.on("part:landed", ({ id, partNumber }) => {});
-batch.on("part:retrying", ({ partNumber, attempt, delayMs }) => {});
-batch.on("upload:succeeded", ({ id }) => {});
-batch.on("upload:failed", ({ id, error }) => {});
-batch.on("upload:cancelled", ({ id }) => {});
-batch.on("upload:paused", ({ id }) => {});
-batch.on("batch:settled", ({ status }) => {});
+uploader.on("part:landed", ({ id, partNumber }) => {});
+uploader.on("part:retrying", ({ partNumber, attempt, delayMs }) => {});
+uploader.on("upload:succeeded", ({ id }) => {});
+uploader.on("upload:failed", ({ id, error }) => {});
+uploader.on("upload:cancelled", ({ id }) => {});
+uploader.on("upload:paused", ({ id }) => {});
+uploader.on("uploader:settled", ({ status }) => {});
 ```
 
 `id` is the library's own identifier for an upload — `snapshot.uploads[n].id`,
@@ -384,12 +384,12 @@ Three verbs. The difference is between discarding work and deferring it.
 | **Resume** | — | — | Continues from what is missing |
 
 ```ts
-const { id } = batch.getSnapshot().uploads[0];
+const { id } = uploader.getSnapshot().uploads[0];
 
-await batch.pause();            // whole batch
-await batch.pause(id);          // one upload, siblings keep going
-await batch.cancel();
-await batch.resume();
+await uploader.pause();            // everything
+await uploader.pause(id);          // one upload, siblings keep going
+await uploader.cancel();
+await uploader.resume();
 ```
 
 Upload ids are minted per upload rather than being positional, so they stay
@@ -405,8 +405,8 @@ their ETags), and resets attempt counts so unfinished parts get a full retry
 budget. It is a harmless no-op on a succeeded upload.
 
 ```ts
-const stuck = batch.getSnapshot().uploads.filter((u) => u.resumable);
-if (stuck.length > 0) showRetryBanner({ onRetry: () => batch.resume() });
+const stuck = uploader.getSnapshot().uploads.filter((u) => u.resumable);
+if (stuck.length > 0) showRetryBanner({ onRetry: () => uploader.resume() });
 ```
 
 Uploads succeed and fail independently — one file exhausting its retries leaves
@@ -460,7 +460,7 @@ asleep for an hour does not wake with its budget spent. Set
 ```ts
 import { defaultClassifier } from "presigned-multipart-upload";
 
-createBatch({
+createUploader({
   files, transport,
   classify: (error, ctx) =>
     (error as { status?: number }).status === 409 ? "retry" : defaultClassifier(error, ctx),
@@ -482,10 +482,10 @@ survive, and they are different problems:
    gives you a perfect description of an upload you cannot continue.
 
 ```ts
-import { createBatch, createIndexedDbStore } from "presigned-multipart-upload";
+import { createUploader, createIndexedDbStore } from "presigned-multipart-upload";
 
 const store = createIndexedDbStore();
-const batch = createBatch({ files, transport, store });
+const uploader = createUploader({ files, transport, store });
 ```
 
 IndexedDB, not localStorage — it is the only web storage that can hold a file
@@ -499,7 +499,7 @@ handle.
 const [handle] = await window.showOpenFilePicker();
 const file = await handle.getFile();
 
-createBatch({ files: [{ file, handle }], transport, store });
+createUploader({ files: [{ file, handle }], transport, store });
 ```
 
 **By re-selecting** — Safari and Firefox, drag-and-drop, or a refused permission
@@ -508,7 +508,7 @@ prompt. The user picks the file again and the library verifies it first.
 ### Finding and continuing
 
 ```ts
-import { listResumable, createResumedBatch } from "presigned-multipart-upload";
+import { listResumable, resumeUploader } from "presigned-multipart-upload";
 
 const interrupted = await listResumable({ store });
 // each: { id, file, landedParts, totalParts, recovery: "handle" | "reselect" }
@@ -519,8 +519,8 @@ const interrupted = await listResumable({ store });
 Pick up everything recoverable without involving the user:
 
 ```ts
-const batch = await createResumedBatch({ store, transport, resume: "all" });
-await batch.resume();
+const uploader = await resumeUploader({ store, transport, resume: "all" });
+await uploader.resume();
 ```
 
 Or handle re-selection explicitly:
@@ -533,8 +533,8 @@ const specs = await Promise.all(
   })),
 );
 
-const batch = await createResumedBatch({ store, transport, resume: specs });
-await batch.resume();
+const uploader = await resumeUploader({ store, transport, resume: specs });
+await uploader.resume();
 ```
 
 ### The fingerprint
@@ -546,7 +546,7 @@ object. Metadata only, deliberately: hashing a multi-gigabyte file on every
 resume would cost more than it protects.
 
 ```ts
-createResumedBatch({ store, transport, resume: specs, fingerprint: { name: false } });
+resumeUploader({ store, transport, resume: specs, fingerprint: { name: false } });
 ```
 
 ### Records
@@ -556,7 +556,7 @@ calls take `recordTtlMs` separately** — pass it to each:
 
 ```ts
 const TTL = 3 * 24 * 60 * 60 * 1000;
-createBatch({ files, transport, store, recordTtlMs: TTL });
+createUploader({ files, transport, store, recordTtlMs: TTL });
 listResumable({ store, recordTtlMs: TTL });
 ```
 
@@ -608,7 +608,7 @@ That is the tradeoff to weigh if you are tempted to raise `partSize` for
 throughput. Lower `concurrency` in the same breath:
 
 ```ts
-createBatch({ files, transport, partSize: 128 * 1024 * 1024, concurrency: 2 });
+createUploader({ files, transport, partSize: 128 * 1024 * 1024, concurrency: 2 });
 ```
 
 ### Sign parts on demand, not all at once
@@ -680,16 +680,16 @@ works perfectly on its own.
 
 ```tsx
 import { useMemo } from "react";
-import { createBatch, httpTransport } from "presigned-multipart-upload";
-import { useUpload } from "presigned-multipart-upload/react";
+import { createUploader, httpTransport } from "presigned-multipart-upload";
+import { useUploader } from "presigned-multipart-upload/react";
 
 const Uploader = ({ files }: { files: File[] }) => {
-  // You own the batch. Key the memo on whatever makes a *new* upload.
-  const batch = useMemo(
-    () => createBatch({ files, transport: httpTransport({ baseUrl: "/api/uploads" }) }),
+  // You own the uploader. Key the memo on whatever makes a *new* upload.
+  const uploader = useMemo(
+    () => createUploader({ files, transport: httpTransport({ baseUrl: "/api/uploads" }) }),
     [files],
   );
-  const { snapshot, file, start, pause, resume, cancel } = useUpload(batch);
+  const { snapshot, file, start, pause, resume, cancel } = useUploader(uploader);
 
   return (
     <>
@@ -706,23 +706,23 @@ const Uploader = ({ files }: { files: File[] }) => {
 };
 ```
 
-`useUpload(controller)` also accepts an existing controller. For moments rather
+`useUploader(controller)` also accepts an existing controller. For moments rather
 than states:
 
 ```tsx
-import { useUploadEvent } from "presigned-multipart-upload/react";
-useUploadEvent(batch, "upload:succeeded", ({ id }) => toast.success(id));
+import { useUploaderEvent } from "presigned-multipart-upload/react";
+useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
 ```
 
 ### Angular
 
 ```ts
-import { createAngularUpload } from "presigned-multipart-upload/angular";
+import { createAngularUploader } from "presigned-multipart-upload/angular";
 
 @Injectable()
 export class UploadService implements OnDestroy {
   private transport = inject(UPLOAD_TRANSPORT);
-  private upload = createAngularUpload(createBatch({ files: [], transport: this.transport }));
+  private upload = createAngularUploader(createUploader({ files: [], transport: this.transport }));
 
   readonly snapshot = this.upload.snapshot;   // Signal
   readonly snapshot$ = this.upload.snapshot$; // Observable, same state
@@ -737,8 +737,8 @@ view onto the same state, not a second source of truth.
 
 ```vue
 <script setup lang="ts">
-import { useUpload } from "presigned-multipart-upload/vue";
-const { snapshot, start, pause, resume, cancel } = useUpload(batch);
+import { useUploader } from "presigned-multipart-upload/vue";
+const { snapshot, start, pause, resume, cancel } = useUploader(uploader);
 </script>
 
 <template>
@@ -755,7 +755,7 @@ No adapter needed. The core's `subscribe` already satisfies Svelte's readable
 store contract:
 
 ```svelte
-<progress value={$batch.progress.percent} max="100" />
+<progress value={$uploader.progress.percent} max="100" />
 ```
 
 The same three-method surface (`subscribe`, `getSnapshot`, `on`) is the
@@ -803,7 +803,7 @@ randomness, connectivity, file handles. Nothing in the core reaches past it.
 
 ```ts
 import { browserPlatform } from "presigned-multipart-upload";
-createBatch({ files, transport, platform: { ...browserPlatform(), random: () => 0.5 } });
+createUploader({ files, transport, platform: { ...browserPlatform(), random: () => 0.5 } });
 ```
 
 ---
@@ -907,7 +907,8 @@ library does not.
 
 - **Upload** — one file's journey to a stored object.
 - **Part** — one contiguous byte range, uploaded independently, numbered from 1.
-- **Batch** — the set of uploads driven together. A single file is a batch of one.
+- **Uploader** — what you hold: `createUploader(...)`. Drives a set of uploads
+  together; a single file is just a set of one.
 - **Presigned URL** — minted by *your* backend, authorising one operation for a
   limited time. This library only consumes them.
 - **Transport** — your three functions: open, complete, abort.

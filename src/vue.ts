@@ -1,24 +1,24 @@
 import { onScopeDispose, shallowRef, type ShallowRef } from "vue";
 
-import type { BatchController, BatchSnapshot } from "./types.js";
+import type { Uploader, UploaderSnapshot } from "./types.js";
 
-export interface UseUploadResult {
-  snapshot: ShallowRef<BatchSnapshot>;
-  start: BatchController["start"];
-  pause: BatchController["pause"];
-  resume: BatchController["resume"];
-  cancel: BatchController["cancel"];
+export interface UseUploaderResult {
+  snapshot: ShallowRef<UploaderSnapshot>;
+  start: Uploader["start"];
+  pause: Uploader["pause"];
+  resume: Uploader["resume"];
+  cancel: Uploader["cancel"];
   stop: () => void;
 }
 
 /**
- * Bind a Batch to Vue's reactivity.
+ * Bind an Uploader to Vue's reactivity.
  *
  * shallowRef rather than ref: snapshots are already frozen and replaced whole,
  * so deep reactivity would walk every Part on every progress tick to discover
  * what the identity change told us for free.
  */
-export const useUpload = (controller: BatchController): UseUploadResult => {
+export const useUploader = (controller: Uploader): UseUploaderResult => {
   const snapshot = shallowRef(controller.getSnapshot());
   const unsubscribe = controller.subscribe((next) => {
     snapshot.value = next;

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch, httpTransport, type UploadErrorCode } from "../src/index.js";
+import { createUploader, httpTransport, type UploadErrorCode } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
 
 const codeFrom = async (options: Record<string, unknown>): Promise<UploadErrorCode | undefined> => {
-  const batch = createBatch({
+  const batch = createUploader({
     files: [makeFile(30 * KB)],
     transport: createFakeTransport(),
     platform: createFakePlatform(),

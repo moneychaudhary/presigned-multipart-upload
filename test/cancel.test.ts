@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { deferred, flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
@@ -10,7 +10,7 @@ describe("cancelling", () => {
   it("stops in-flight Attempts rather than waiting for the current Part", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       transport,
       platform,
@@ -31,7 +31,7 @@ describe("cancelling", () => {
   it("tears the Upload down at the provider exactly once", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       transport,
       platform,
@@ -50,7 +50,7 @@ describe("cancelling", () => {
 
   it("does not tear down an Upload that already succeeded", async () => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -70,7 +70,7 @@ describe("cancelling", () => {
     // once Opening resolves there is a real multipart upload to tear down.
     const gate = deferred();
     const transport = createFakeTransport({ onOpen: () => gate.promise });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -95,7 +95,7 @@ describe("cancelling", () => {
         throw new Error("open refused");
       },
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -111,7 +111,7 @@ describe("cancelling", () => {
 
   it("cancels an Upload that never started", async () => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -129,7 +129,7 @@ describe("cancelling", () => {
     const platform = createFakePlatform({
       script: ({ uploadId }) => (uploadId === "upload-1" ? { kind: "hang" } : { kind: "ok" }),
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport: createFakeTransport(),
       platform,
@@ -150,7 +150,7 @@ describe("cancelling", () => {
   it("tears down every non-terminal Upload once when the Batch is cancelled", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport,
       platform,
@@ -169,7 +169,7 @@ describe("cancelling", () => {
 
   it("reports the Batch as cancelled and announces each Upload", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform,
@@ -196,7 +196,7 @@ describe("cancelling", () => {
         throw new Error("abort refused");
       },
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform,
@@ -216,7 +216,7 @@ describe("cancelling", () => {
 describe("resuming a cancelled Upload", () => {
   it("is refused, because Cancel discards the work", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform,

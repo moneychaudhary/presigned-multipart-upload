@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createBatch,
+  createUploader,
   createMemoryStore,
-  createResumedBatch,
+  resumeUploader,
   listResumable,
   scopeStore,
   type RecordStore,
@@ -24,7 +24,7 @@ const failLate = (extra: FakePlatformOptions = {}) =>
 const interrupt = async (store: RecordStore, platformOptions: FakePlatformOptions = {}) => {
   const file = makeFile(50 * KB);
   const platform = failLate(platformOptions);
-  const batch = createBatch({
+  const batch = createUploader({
     files: [{ file, handle: fakeHandle(file) }],
     transport: createFakeTransport(),
     platform,
@@ -44,7 +44,7 @@ describe("keeping an Upload Record", () => {
     const platform = createFakePlatform({
       script: ({ partNumber }) => (partNumber >= 3 ? { kind: "hang" } : { kind: "ok" }),
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       transport: createFakeTransport(),
       platform,
@@ -84,7 +84,7 @@ describe("keeping an Upload Record", () => {
 
   it("removes the Record once the Upload succeeds", async () => {
     const store = createMemoryStore();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -101,7 +101,7 @@ describe("keeping an Upload Record", () => {
   it("removes the Record when the Upload is cancelled", async () => {
     const store = createMemoryStore();
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform,
@@ -200,7 +200,7 @@ describe("resuming across a page session, via a File Handle", () => {
     await interrupt(store, { handlesSupported: true });
 
     const transport = createFakeTransport();
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: [{ id: "upload-1" }],
       transport,
@@ -223,7 +223,7 @@ describe("resuming across a page session, via a File Handle", () => {
     await interrupt(store, { handlesSupported: true });
 
     const platform = createFakePlatform({ handlesSupported: true });
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: [{ id: "upload-1" }],
       transport: createFakeTransport(),
@@ -242,7 +242,7 @@ describe("resuming across a page session, via a File Handle", () => {
     await interrupt(store, { handlesSupported: true });
 
     const transport = createFakeTransport();
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: [{ id: "upload-1" }],
       transport,
@@ -261,7 +261,7 @@ describe("resuming across a page session, via a File Handle", () => {
     await interrupt(store, { handlesSupported: true });
 
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store,
         resume: [{ id: "upload-1" }],
         transport: createFakeTransport(),
@@ -279,7 +279,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     await interrupt(store, { handlesSupported: false });
 
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store,
         resume: [{ id: "upload-1" }],
         transport: createFakeTransport(),
@@ -294,7 +294,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     const store = createMemoryStore();
     const { file } = await interrupt(store, { handlesSupported: false });
 
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: [{ id: "upload-1", file }],
       transport: createFakeTransport(),
@@ -312,7 +312,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     const platform = createFakePlatform({ handlesSupported: false });
 
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store,
         resume: [{ id: "upload-1", file: makeFile(50 * KB, "other.mov") }],
         transport: createFakeTransport(),
@@ -330,7 +330,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     await interrupt(store, { handlesSupported: false });
 
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store,
         resume: [{ id: "upload-1", file: makeFile(60 * KB) }],
         transport: createFakeTransport(),
@@ -351,7 +351,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     });
 
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store,
         resume: [{ id: "upload-1", file: edited }],
         transport: createFakeTransport(),
@@ -366,7 +366,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
     const store = createMemoryStore();
     await interrupt(store, { handlesSupported: false });
 
-    const batch = await createResumedBatch({
+    const batch = await resumeUploader({
       store,
       resume: [{ id: "upload-1", file: makeFile(50 * KB, "renamed.mov") }],
       transport: createFakeTransport(),
@@ -381,7 +381,7 @@ describe("resuming across a page session, by re-selecting the file", () => {
 
   it("rejects an id with no Record behind it", async () => {
     await expect(
-      createResumedBatch({
+      resumeUploader({
         store: createMemoryStore(),
         resume: [{ id: "ghost" }],
         transport: createFakeTransport(),

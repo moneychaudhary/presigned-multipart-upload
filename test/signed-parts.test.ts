@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch, type UploadError } from "../src/index.js";
+import { createUploader, type UploadError } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
 import { createFakeTransport, type FakeTransportOptions } from "./fakes/transport.js";
@@ -12,7 +12,7 @@ const build = (script?: Script, extra = {}, transportOptions: FakeTransportOptio
   return {
     platform,
     transport,
-    batch: createBatch({
+    batch: createUploader({
       files: [makeFile(100 * KB)],
       transport,
       platform,
@@ -154,7 +154,7 @@ describe("a Transport that mints urls at Opening", () => {
   it("is still supported, and never asks for a signing", async () => {
     const platform = createFakePlatform();
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(100 * KB)],
       transport,
       platform,
@@ -171,7 +171,7 @@ describe("a Transport that mints urls at Opening", () => {
   it("is refused when it mints nothing and cannot sign either", async () => {
     const platform = createFakePlatform();
     const transport = createFakeTransport({ urlCount: () => 0 });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(100 * KB)],
       transport,
       platform,

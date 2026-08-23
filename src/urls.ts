@@ -1,58 +1,38 @@
 import { uploadError } from "./errors.js";
 
-/**
- * A Presigned URL, and the Refresh that minted it.
- *
- * The generation is what makes an expiry felt by several Parts at once cost a
- * single Refresh: a Part whose Attempt failed on an older generation already
- * has fresher urls waiting, and asks for nothing.
- */
+/** A Presigned URL, tagged with the Refresh that minted it. */
 export interface PartUrl {
   value: string;
   generation: number;
 }
 
 /**
- * The Presigned URLs an Upload is currently entitled to use.
+ * The Presigned URLs an Upload may currently use.
  *
- * Urls expire, so this is not a list but a supply: Parts ask for one when they
- * are about to send, and ask for the supply to be replaced when one is refused.
- * Replacing is sequenced here rather than at the call site because Parts run
- * concurrently and their urls expire together — without a single owner, N Parts
- * meeting one expiry produce N Refreshes, or worse, N-1 failures.
+ * A supply rather than a list: urls expire, so Parts draw one just before
+ * sending and ask for a replacement when one is refused. Parts run concurrently
+ * and their urls expire together, so Refreshes are sequenced here — one owner,
+ * one Refresh per expiry however many Parts felt it.
  */
 export interface PartUrls {
   /** The url for this Part now, minting more if the supply does not reach it. */
   get: (partNumber: number, signal: AbortSignal) => Promise<PartUrl>;
   /**
-   * Replace urls that were not honoured.
-   *
-   * Resolves to the current generation — which may already be newer than the
-   * stale one, when a sibling Part met the same expiry first and refreshed on
-   * everyone's behalf. Resolves to null when the Refresh budget is spent, which
-   * is how a genuine authorisation failure is told apart from an expiry: an
-   * expiry is fixed by fresh urls, a rejection repeats on them.
+   * Replace urls that were not honoured. Resolves to the current generation,
+   * which may already be newer if a sibling refreshed first; null when the
+   * budget is spent, which means the refusal was not an expiry.
    */
   refresh: (stale: number) => Promise<number | null>;
   /** Whether a Refresh would achieve anything for a Part holding this generation. */
   canRefresh: (stale: number) => boolean;
   /**
-   * A Part landed on this generation's urls.
-   *
-   * Restores the Refresh budget, but only when the generation is still the
-   * current one. A Part landing on urls a sibling has already replaced proves
-   * nothing about the replacements, and crediting it would let one Part that is
-   * genuinely forbidden re-Open once for every sibling that happens to land.
+   * A Part landed. Restores the Refresh budget, but only if it landed on the
+   * current generation — an older one proves nothing about the replacements.
    */
   noteProgress: (generation: number) => void;
 }
 
-/**
- * Obtain urls for the named Parts.
- *
- * May return more than was asked for — an Opening mints the whole Upload at
- * once — but must return at least what was asked for.
- */
+/** Obtain urls for at least the named Parts. May return more. */
 export type UrlMinter = (
   partNumbers: number[],
   signal: AbortSignal,
@@ -61,18 +41,9 @@ export type UrlMinter = (
 interface PartUrlsOptions {
   partCount: number;
   mint: UrlMinter;
-  /**
-   * How many Parts to mint at a time. Infinity mints the whole Upload in one
-   * request, which is what an Opening does; a finite window is what keeps a
-   * 10,000-Part Upload from signing 10,000 urls it will not use for hours.
-   */
+  /** Parts per mint. Infinity mints the whole Upload, which is what Opening does. */
   windowSize: number;
-  /**
-   * Refreshes allowed before the next Part lands. A landed Part proves the
-   * current urls work, so the budget is restored rather than consumed for the
-   * life of the Upload — which is what lets a transfer outlive its urls many
-   * times over while a genuine 403 still ends promptly.
-   */
+  /** Refreshes allowed before the next Part lands. Restored when one does. */
   maxRefreshes: number;
   /** Urls already in hand, in Part order — what an Opening returned. */
   seed?: readonly string[];
@@ -91,9 +62,9 @@ export const createPartUrls = ({
 
   seed?.forEach((value, index) => urls.set(index + 1, value));
 
-  /** The mint in flight, so a burst of Parts shares one request. */
+  /** In flight, so a burst of Parts shares one request. */
   let minting: { generation: number; done: Promise<void> } | null = null;
-  /** The Refresh in flight, so one expiry costs one Refresh however many Parts felt it. */
+  /** In flight, so one expiry costs one Refresh. */
   let refreshing: Promise<number> | null = null;
 
   const windowFrom = (from: number): number[] => {
@@ -116,8 +87,7 @@ export const createPartUrls = ({
     const at = generation;
     const done = (async () => {
       const minted = await mint(windowFrom(partNumber), signal);
-      // A Refresh that landed while this was in flight makes these urls stale
-      // before they were ever used. Keeping them would 403 the whole window.
+      // Refreshed mid-mint: these are stale before use.
       if (generation !== at) return;
       for (const [key, value] of Object.entries(minted)) urls.set(Number(key), value);
     })();
@@ -148,7 +118,7 @@ export const createPartUrls = ({
       stale < generation || refreshing !== null || refreshesSpent < maxRefreshes,
 
     refresh: async (stale) => {
-      // Someone met this expiry first. Their fresh urls are this Part's too.
+      // Someone met this expiry first.
       if (stale < generation) return generation;
       if (refreshing !== null) return refreshing;
       if (refreshesSpent >= maxRefreshes) return null;

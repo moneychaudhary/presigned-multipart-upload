@@ -1,46 +1,36 @@
 import { signal, type Signal } from "@angular/core";
 import { Observable } from "rxjs";
 
-import type { BatchController, BatchSnapshot } from "./types.js";
+import type { Uploader, UploaderSnapshot } from "./types.js";
 
-export interface AngularUpload {
-  /** Live Batch state, for templates and computed signals. */
-  snapshot: Signal<BatchSnapshot>;
+export interface AngularUploader {
+  /** Live state, for templates and computed signals. */
+  snapshot: Signal<UploaderSnapshot>;
   /** The same state as a stream, for codebases built on RxJS. */
-  snapshot$: Observable<BatchSnapshot>;
-  start: BatchController["start"];
-  pause: BatchController["pause"];
-  resume: BatchController["resume"];
-  cancel: BatchController["cancel"];
+  snapshot$: Observable<UploaderSnapshot>;
+  start: Uploader["start"];
+  pause: Uploader["pause"];
+  resume: Uploader["resume"];
+  cancel: Uploader["cancel"];
   /** Release the subscription. Call from the service's ngOnDestroy. */
   destroy: () => void;
 }
 
 /**
- * Bind a Batch to Angular.
+ * Bind an Uploader to Angular.
  *
- * A factory rather than an @Injectable class, so it can be constructed and
- * tested without a TestBed, and so an application can decide for itself whether
- * to provide it at root, per route, or per component. Wrap it in a service:
- *
- *   @Injectable()
- *   export class UploadService implements OnDestroy {
- *     private readonly upload = createAngularUpload(createBatch({ ... }));
- *     readonly snapshot = this.upload.snapshot;
- *     ngOnDestroy() { this.upload.destroy(); }
- *   }
- *
- * Signals are the primary surface because they work the same in zone-based and
- * zoneless applications; the Observable is a view onto the identical state
- * rather than a second source of truth.
+ * A factory rather than an @Injectable, so it needs no TestBed and you choose
+ * where to provide it. Signals are the primary surface — they behave the same
+ * zoned and zoneless; `snapshot$` is a view onto the same state, not a second
+ * source of truth.
  */
-export const createAngularUpload = (controller: BatchController): AngularUpload => {
-  const state = signal<BatchSnapshot>(controller.getSnapshot());
+export const createAngularUploader = (controller: Uploader): AngularUploader => {
+  const state = signal<UploaderSnapshot>(controller.getSnapshot());
   const unsubscribe = controller.subscribe((next) => state.set(next));
 
   // subscribe() already replays the current snapshot to a new listener, so
   // pushing it here as well would emit the initial state twice.
-  const snapshot$ = new Observable<BatchSnapshot>((subscriber) =>
+  const snapshot$ = new Observable<UploaderSnapshot>((subscriber) =>
     controller.subscribe((next) => subscriber.next(next)),
   );
 

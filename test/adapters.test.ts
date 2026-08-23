@@ -4,18 +4,18 @@ import React from "react";
 import { effectScope } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
-import { createAngularUpload } from "../src/angular.js";
-import { createBatch } from "../src/index.js";
-import { useUpload, useUploadEvent } from "../src/react.js";
-import type { BatchController } from "../src/index.js";
-import { useUpload as useVueUpload } from "../src/vue.js";
+import { createAngularUploader } from "../src/angular.js";
+import { createUploader } from "../src/index.js";
+import { useUploader, useUploaderEvent } from "../src/react.js";
+import type { Uploader } from "../src/index.js";
+import { useUploader as useVueUpload } from "../src/vue.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
 
-const build = (script?: Script): BatchController =>
-  createBatch({
+const build = (script?: Script): Uploader =>
+  createUploader({
     files: [makeFile(25 * KB)],
     transport: createFakeTransport(),
     platform: createFakePlatform(script ? { script } : {}),
@@ -28,7 +28,7 @@ describe("the React adapter", () => {
     const controller = build();
 
     const View = (): React.ReactElement => {
-      const { snapshot } = useUpload(controller);
+      const { snapshot } = useUploader(controller);
       return React.createElement("div", null, `${snapshot.status}:${snapshot.progress.percent}`);
     };
 
@@ -44,10 +44,10 @@ describe("the React adapter", () => {
 
   it("exposes the Batch's actions", () => {
     const controller = build();
-    let actions: ReturnType<typeof useUpload> | null = null;
+    let actions: ReturnType<typeof useUploader> | null = null;
 
     const View = (): React.ReactElement => {
-      actions = useUpload(controller);
+      actions = useUploader(controller);
       return React.createElement("div");
     };
     render(React.createElement(View));
@@ -63,7 +63,7 @@ describe("the React adapter", () => {
     const renders = vi.fn();
 
     const View = (): React.ReactElement => {
-      useUpload(controller);
+      useUploader(controller);
       renders();
       return React.createElement("div");
     };
@@ -79,7 +79,7 @@ describe("the React adapter", () => {
   it("leaves no live subscription after unmount", async () => {
     const controller = build();
     const View = (): React.ReactElement => {
-      useUpload(controller);
+      useUploader(controller);
       return React.createElement("div");
     };
 
@@ -99,7 +99,7 @@ describe("the React adapter", () => {
     const landed = vi.fn();
 
     const View = (): React.ReactElement => {
-      useUploadEvent(controller, "part:landed", landed);
+      useUploaderEvent(controller, "part:landed", landed);
       return React.createElement("div");
     };
 
@@ -116,7 +116,7 @@ describe("the React adapter", () => {
     const on = vi.spyOn(controller, "on");
 
     const View = (): React.ReactElement => {
-      useUploadEvent(controller, "part:landed", () => undefined);
+      useUploaderEvent(controller, "part:landed", () => undefined);
       return React.createElement("div");
     };
 
@@ -186,7 +186,7 @@ describe("the Core's subscribe, used directly", () => {
 describe("the Angular adapter", () => {
   it("exposes a signal that tracks the snapshot", async () => {
     const controller = build();
-    const upload = createAngularUpload(controller);
+    const upload = createAngularUploader(controller);
 
     expect(upload.snapshot().status).toBe("idle");
     await controller.start();
@@ -195,7 +195,7 @@ describe("the Angular adapter", () => {
 
   it("emits equivalently through the Observable interop", async () => {
     const controller = build();
-    const upload = createAngularUpload(controller);
+    const upload = createAngularUploader(controller);
 
     const seen: string[] = [];
     const subscription = upload.snapshot$.subscribe((snapshot) => seen.push(snapshot.status));
@@ -211,7 +211,7 @@ describe("the Angular adapter", () => {
 
   it("stops tracking once destroyed", async () => {
     const controller = build();
-    const upload = createAngularUpload(controller);
+    const upload = createAngularUploader(controller);
 
     upload.destroy();
     await controller.start();
@@ -220,7 +220,7 @@ describe("the Angular adapter", () => {
   });
 
   it("exposes the Batch's actions", () => {
-    const upload = createAngularUpload(build());
+    const upload = createAngularUploader(build());
     expect(typeof upload.start).toBe("function");
     expect(typeof upload.resume).toBe("function");
   });
@@ -229,9 +229,9 @@ describe("the Angular adapter", () => {
 describe("the Core on its own", () => {
   it("pulls in no framework", async () => {
     const core = await import("../src/index.js");
-    expect(typeof core.createBatch).toBe("function");
+    expect(typeof core.createUploader).toBe("function");
     // The Core's own module graph must never reach a framework entry point.
-    expect(Object.keys(core)).not.toContain("useUpload");
+    expect(Object.keys(core)).not.toContain("useUploader");
   });
 
   it("still works with no adapter involved", async () => {

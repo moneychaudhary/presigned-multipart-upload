@@ -1,12 +1,12 @@
-import type { BatchEvents, BatchSnapshot, EventName } from "./types.js";
+import type { UploaderEvents, UploaderSnapshot, EventName } from "./types.js";
 
 export interface Observable {
-  subscribe: (listener: (snapshot: BatchSnapshot) => void) => () => void;
-  on: <T extends EventName>(type: T, handler: (payload: BatchEvents[T]) => void) => () => void;
+  subscribe: (listener: (snapshot: UploaderSnapshot) => void) => () => void;
+  on: <T extends EventName>(type: T, handler: (payload: UploaderEvents[T]) => void) => () => void;
   /** Mark the snapshot stale and notify subscribers. */
   invalidate: () => void;
-  emit: <T extends EventName>(type: T, payload: BatchEvents[T]) => void;
-  read: () => BatchSnapshot;
+  emit: <T extends EventName>(type: T, payload: UploaderEvents[T]) => void;
+  read: () => UploaderSnapshot;
 }
 
 /**
@@ -15,13 +15,13 @@ export interface Observable {
  * Snapshots are frozen and cached: identity changes only when something actually
  * changed, so a framework binding does not re-render for nothing.
  */
-export const createObservable = (build: () => BatchSnapshot): Observable => {
-  const listeners = new Set<(snapshot: BatchSnapshot) => void>();
+export const createObservable = (build: () => UploaderSnapshot): Observable => {
+  const listeners = new Set<(snapshot: UploaderSnapshot) => void>();
   const handlers = new Map<EventName, Set<(payload: never) => void>>();
 
-  let cached: BatchSnapshot | null = null;
+  let cached: UploaderSnapshot | null = null;
 
-  const read = (): BatchSnapshot => {
+  const read = (): UploaderSnapshot => {
     if (cached === null) cached = build();
     return cached;
   };

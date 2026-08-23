@@ -10,7 +10,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { createBatch, type Transport } from "../../src/index.js";
+import { createUploader, type Transport } from "../../src/index.js";
 import { nodePlatform } from "./node-platform.js";
 
 const ENDPOINT = process.env.MINIO_ENDPOINT ?? "http://127.0.0.1:9000";
@@ -123,7 +123,7 @@ describe.skipIf(!available)("uploading to a real S3-compatible server", () => {
     const key = `smoke/${Date.now()}-clip.bin`;
     const file = new File([bytes], "clip.bin", { type: "application/octet-stream" });
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [file],
       transport: transportFor(key),
       platform: nodePlatform(),
@@ -167,7 +167,7 @@ describe.skipIf(!available)("uploading to a real S3-compatible server", () => {
       },
     };
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [file],
       transport: transportFor(key),
       platform: guarded,

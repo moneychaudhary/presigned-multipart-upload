@@ -147,7 +147,7 @@ export type UploadStatus =
   | "cancelled"
   | "paused";
 
-export type BatchStatus =
+export type UploaderStatus =
   | "idle"
   | "uploading"
   | "succeeded"
@@ -213,8 +213,8 @@ export interface UploadSnapshot {
   resumable: boolean;
 }
 
-export interface BatchSnapshot {
-  status: BatchStatus;
+export interface UploaderSnapshot {
+  status: UploaderStatus;
   progress: Progress;
   uploads: UploadSnapshot[];
   /**
@@ -235,17 +235,17 @@ export interface BatchSnapshot {
  * identifier. They used to share the name here, so `batch.resume(upload.uploadId)`
  * compiled, read as obviously right, and threw.
  */
-export interface BatchEvents {
+export interface UploaderEvents {
   "part:landed": { id: string; partNumber: number };
   "part:retrying": { id: string; partNumber: number; attempt: number; delayMs: number };
   "upload:succeeded": { id: string };
   "upload:failed": { id: string; error: UploadErrorInfo };
   "upload:cancelled": { id: string };
   "upload:paused": { id: string };
-  "batch:settled": { status: BatchStatus };
+  "uploader:settled": { status: UploaderStatus };
 }
 
-export type EventName = keyof BatchEvents;
+export type EventName = keyof UploaderEvents;
 
 export interface ProviderLimits {
   /** Smallest Part accepted, except for the last. */
@@ -332,10 +332,10 @@ export interface UploadInput {
   handle?: unknown;
 }
 
-export type BatchFile = File | UploadInput;
+export type UploadFile = File | UploadInput;
 
-export interface BatchOptions extends UploadTuning {
-  files: BatchFile[];
+export interface UploaderOptions extends UploadTuning {
+  files: UploadFile[];
   transport: Transport;
   platform?: Platform;
   /** Where Upload Records are kept. Omit to keep none, losing Durable Resume. */
@@ -346,15 +346,15 @@ export interface BatchOptions extends UploadTuning {
   fingerprint?: FingerprintOptions;
 }
 
-export interface BatchController {
-  start: () => Promise<BatchSnapshot>;
+export interface Uploader {
+  start: () => Promise<UploaderSnapshot>;
   /** Continue Uploads that are paused or failed, from the Parts that never landed. */
-  resume: (id?: string) => Promise<BatchSnapshot>;
+  resume: (id?: string) => Promise<UploaderSnapshot>;
   /** Halt without discarding. Resumable. */
-  pause: (id?: string) => Promise<BatchSnapshot>;
+  pause: (id?: string) => Promise<UploaderSnapshot>;
   /** Discard. Tears the Upload down at the provider; terminal. */
-  cancel: (id?: string) => Promise<BatchSnapshot>;
-  getSnapshot: () => BatchSnapshot;
-  subscribe: (listener: (snapshot: BatchSnapshot) => void) => () => void;
-  on: <T extends EventName>(type: T, handler: (payload: BatchEvents[T]) => void) => () => void;
+  cancel: (id?: string) => Promise<UploaderSnapshot>;
+  getSnapshot: () => UploaderSnapshot;
+  subscribe: (listener: (snapshot: UploaderSnapshot) => void) => () => void;
+  on: <T extends EventName>(type: T, handler: (payload: UploaderEvents[T]) => void) => () => void;
 }

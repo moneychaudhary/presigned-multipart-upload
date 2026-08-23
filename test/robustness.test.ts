@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -16,7 +16,7 @@ describe("a misbehaving subscriber", () => {
   it("cannot take the Batch down with it", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const options = base();
-    const batch = createBatch({ files: [makeFile(25 * KB)], ...options });
+    const batch = createUploader({ files: [makeFile(25 * KB)], ...options });
 
     batch.subscribe(() => {
       throw new Error("render exploded");
@@ -32,13 +32,13 @@ describe("a misbehaving subscriber", () => {
   it("cannot stop siblings settling or the settled event firing", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const options = base();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       ...options,
     });
 
     const settled = vi.fn();
-    batch.on("batch:settled", settled);
+    batch.on("uploader:settled", settled);
     batch.on("upload:succeeded", () => {
       throw new Error("handler exploded");
     });
@@ -55,7 +55,7 @@ describe("a misbehaving Transport", () => {
   it("rejects a url list longer than the Part list", async () => {
     const platform = createFakePlatform();
     const transport = createFakeTransport({ urlCount: (n) => n + 1 });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       ...base(transport, platform),
     });
@@ -72,7 +72,7 @@ describe("a misbehaving Transport", () => {
         throw Object.assign(new Error("upstream refused"), { name: "UploadError" });
       },
     });
-    const batch = createBatch({ files: [makeFile(25 * KB)], ...base(transport) });
+    const batch = createUploader({ files: [makeFile(25 * KB)], ...base(transport) });
 
     const snapshot = await batch.start();
 
@@ -85,7 +85,7 @@ describe("a misbehaving Transport", () => {
         throw new Error("complete refused");
       },
     });
-    const batch = createBatch({ files: [makeFile(25 * KB)], ...base(transport) });
+    const batch = createUploader({ files: [makeFile(25 * KB)], ...base(transport) });
 
     const snapshot = await batch.start();
 
@@ -98,7 +98,7 @@ describe("a Part with no readable ETag", () => {
     const platform = createFakePlatform({
       script: ({ partNumber }) => (partNumber === 2 ? { kind: "no-etag" } : { kind: "ok" }),
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       ...base(createFakeTransport(), platform),
     });
@@ -117,7 +117,7 @@ describe("Batch status across mixed outcomes", () => {
     const platform = createFakePlatform({
       script: ({ uploadId }) => (uploadId === "upload-2" ? { kind: "no-etag" } : { kind: "ok" }),
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       ...base(createFakeTransport(), platform),
     });
@@ -131,7 +131,7 @@ describe("Batch status across mixed outcomes", () => {
 
   it("counts Attempts per Upload, not per Part number across the Batch", async () => {
     const platform = createFakePlatform();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       ...base(createFakeTransport(), platform),
     });

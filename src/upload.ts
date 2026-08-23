@@ -217,11 +217,9 @@ const openUpload = async (state: UploadState, deps: UploadDeps): Promise<string[
 /**
  * The Presigned URL supply for one run.
  *
- * Two minters sit behind one seam. Where the Transport can sign named Parts,
- * urls are minted a window ahead and an expiry is repaired by re-signing what
- * is in flight. Where it cannot, the whole Upload is minted by an Opening and an
- * expiry is repaired by Opening again — the original behaviour, now sequenced so
- * that Parts meeting one expiry together share one Opening between them.
+ * Two minters, one seam. A Transport that can sign named Parts mints a window
+ * ahead and repairs an expiry by re-signing; one that cannot mints the whole
+ * Upload at Opening and repairs an expiry by Opening again.
  */
 const createUrlSupply = (state: UploadState, deps: UploadDeps, seed: string[]): PartUrls => {
   const { transport, settings } = deps;
@@ -249,9 +247,8 @@ const createUrlSupply = (state: UploadState, deps: UploadDeps, seed: string[]): 
       const urls = await openUpload(state, deps);
       return Object.fromEntries(urls.map((url, index) => [index + 1, url]));
     } catch (error) {
-      // Attributed here so a Refresh mid-flight reports the same cause as the
-      // Opening that starts a run. It used to escape unwrapped and arrive as a
-      // send failure, which is not what went wrong.
+      // So a mid-flight Refresh reports the same cause as the Opening that
+      // starts a run, rather than surfacing as a send failure.
       throw wrap("TRANSPORT_OPEN_FAILED", "Opening the Upload failed", error);
     }
   };
@@ -334,8 +331,7 @@ const sendPartWithRetry = async (
   const failPart = (error: UploadError): never => {
     part.status = "failed";
     part.loaded = 0;
-    // Announced before unwinding. It used to throw straight out, leaving the
-    // Part reported as still uploading until something else happened to notify.
+    // Announced before unwinding, or the Part reads as still uploading.
     deps.onChange(state);
     throw error;
   };

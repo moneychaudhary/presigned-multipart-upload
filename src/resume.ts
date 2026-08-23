@@ -1,11 +1,11 @@
-import { createSeededBatch } from "./batch.js";
+import { createSeededUploader } from "./uploader.js";
 import { uploadError } from "./errors.js";
 import { assertFingerprint } from "./fingerprint.js";
 import { sliceParts } from "./plan.js";
 import { browserPlatform } from "./platform/browser.js";
 import { DEFAULT_RECORD_TTL_MS, isStale, type RecordStore, type UploadRecord } from "./store.js";
 import { createUploadState, describeFile, type UploadState } from "./upload.js";
-import type { BatchController, BatchOptions, FileDescriptor, Platform } from "./types.js";
+import type { Uploader, UploaderOptions, FileDescriptor, Platform } from "./types.js";
 
 /** How an interrupted Upload's bytes can be recovered. */
 export type Recovery =
@@ -83,7 +83,7 @@ export interface ResumeSpec {
   file?: File;
 }
 
-export interface CreateResumedBatchOptions extends Omit<BatchOptions, "files"> {
+export interface ResumeUploaderOptions extends Omit<UploaderOptions, "files"> {
   store: RecordStore;
   /**
    * Which interrupted Uploads to take up.
@@ -104,9 +104,9 @@ export interface CreateResumedBatchOptions extends Omit<BatchOptions, "files"> {
  * the file the user re-selected. A handle whose permission is refused falls back
  * to needing a re-selection rather than throwing.
  */
-export const createResumedBatch = async (
-  options: CreateResumedBatchOptions,
-): Promise<BatchController> => {
+export const resumeUploader = async (
+  options: ResumeUploaderOptions,
+): Promise<Uploader> => {
   const platform = options.platform ?? browserPlatform();
   const seed: UploadState[] = [];
 
@@ -152,24 +152,20 @@ export const createResumedBatch = async (
     }
 
     // Paused, not failed. Nothing about the previous session's ending is
-    // knowable from here, and Pause is exactly what this is: work deferred,
-    // waiting to be taken back up. It used to be set to "failed" carrying a
-    // fictional NOT_RESUMABLE, purely to satisfy a resumability test that keyed
-    // on status — which showed an adopter a red error banner on an Upload that
-    // was perfectly fine.
+    // knowable from here, and this is exactly Pause: work deferred, waiting.
     state.status = "paused";
     state.error = null;
     seed.push(state);
   }
 
-  return createSeededBatch({ ...options, files: [], seed, partSize: options.partSize });
+  return createSeededUploader({ ...options, files: [], seed, partSize: options.partSize });
 };
 
 const recoverFile = async (
   record: UploadRecord,
   spec: ResumeSpec,
   platform: Platform,
-  options: CreateResumedBatchOptions,
+  options: ResumeUploaderOptions,
 ): Promise<File> => {
   const files = platform.files;
   if (record.handle !== null && files?.isHandleSupported()) {

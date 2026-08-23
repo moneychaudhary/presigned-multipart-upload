@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch, createMemoryStore, listResumable } from "../src/index.js";
+import { createUploader, createMemoryStore, listResumable } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -18,7 +18,7 @@ const interruptedBatch = (
   platform: ReturnType<typeof createFakePlatform>,
 ) => {
   const file = makeFile(30 * KB, name);
-  return createBatch({
+  return createUploader({
     files: [{ file, handle: fakeHandle(file) }],
     transport: createFakeTransport(),
     platform,

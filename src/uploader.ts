@@ -6,12 +6,12 @@ import { createSemaphore } from "./semaphore.js";
 import { DEFAULT_RECORD_TTL_MS, type UploadRecord } from "./store.js";
 import { PROVIDERS } from "./types.js";
 import type {
-  BatchController,
-  BatchFile,
+  Uploader,
+  UploadFile,
   ProviderLimits,
-  BatchOptions,
-  BatchSnapshot,
-  BatchStatus,
+  UploaderOptions,
+  UploaderSnapshot,
+  UploaderStatus,
   Progress,
   UploadSnapshot,
 } from "./types.js";
@@ -77,7 +77,7 @@ const snapshotUpload = (state: UploadState): UploadSnapshot => {
  * mixed terminal set must never report success just because it is not uniformly
  * anything else.
  */
-const deriveBatchStatus = (uploads: UploadSnapshot[]): BatchStatus => {
+const deriveStatus = (uploads: UploadSnapshot[]): UploaderStatus => {
   if (uploads.length === 0) return "idle";
   if (uploads.every((upload) => upload.status === "pending")) return "idle";
 
@@ -107,15 +107,15 @@ const toRecord = (state: UploadState, now: number): UploadRecord => ({
   handle: state.handle,
 });
 
-const toInput = (entry: BatchFile): { file: File; handle: unknown } =>
+const toInput = (entry: UploadFile): { file: File; handle: unknown } =>
   entry instanceof File ? { file: entry, handle: null } : { file: entry.file, handle: entry.handle ?? null };
 
-interface BatchInternalOptions extends BatchOptions {
+interface UploaderInternalOptions extends UploaderOptions {
   /** Pre-built states, used when taking up Uploads recovered from the store. */
   seed?: UploadState[];
 }
 
-const buildBatch = (options: BatchInternalOptions): BatchController => {
+const buildBatch = (options: UploaderInternalOptions): Uploader => {
   const platform = options.platform ?? browserPlatform();
   const store = options.store ?? null;
   const recordTtlMs = options.recordTtlMs ?? DEFAULT_RECORD_TTL_MS;
@@ -170,12 +170,12 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     return snapshot;
   };
 
-  const buildSnapshot = (): BatchSnapshot => {
+  const buildSnapshot = (): UploaderSnapshot => {
     const uploads = states.map(cachedSnapshot);
     const total = uploads.reduce((sum, upload) => sum + upload.progress.total, 0);
     const loaded = uploads.reduce((sum, upload) => sum + upload.progress.loaded, 0);
     return Object.freeze({
-      status: deriveBatchStatus(uploads),
+      status: deriveStatus(uploads),
       progress: progressOf(loaded, total),
       uploads: Object.freeze(uploads) as UploadSnapshot[],
       file: uploads.length === 1 ? uploads[0]! : null,
@@ -185,17 +185,9 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
   const observable = createObservable(buildSnapshot);
 
   /**
-   * Record that an Upload changed.
-   *
-   * One operation, deliberately. This used to bump a `version` counter on the
-   * Upload State that the cache compared against, which meant two things had to
-   * happen in the right order every time: bump, then invalidate. Bumping
-   * elsewhere, or invalidating without bumping, served a frozen snapshot
-   * forever — a UI that quietly stops updating, with no error anywhere. There is
-   * nothing left to get out of step.
-   *
-   * Every mutation of an Upload State must still come through here. That is the
-   * one rule, and it is now the only one.
+   * Record that an Upload changed. Every mutation must come through here — that
+   * is the one rule. One operation, so nothing can get out of step and serve a
+   * frozen snapshot.
    */
   const touch = (state: UploadState): void => {
     cache.delete(state.id);
@@ -209,16 +201,9 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
   /**
    * Run one Record Store call, best-effort.
    *
-   * The store is documented as droppable — omit it and you lose Durable Resume.
-   * A store that *rejects* must therefore lose the same thing and no more. It
-   * used to lose the Upload instead: a rejecting `put` on the Part-landed path
-   * was handed to the classifier, came back "retry", and re-sent a Part whose
-   * ETag was already in hand until the Retry budget ran out; on the other paths
-   * it escaped `runUpload` and took every sibling Upload down with it. Quota
-   * exceeded on a store holding File Handles is the realistic trigger.
-   *
-   * Reported rather than swallowed, so it stays diagnosable — the same bargain
-   * `observable.deliver` strikes with a subscriber that throws.
+   * The store is droppable — omit it and you lose Durable Resume. A store that
+   * *rejects* must cost the same and no more, never the Upload. Reported rather
+   * than swallowed so it stays diagnosable.
    */
   const attemptStore = async (what: string, run: () => Promise<unknown>): Promise<void> => {
     try {
@@ -294,16 +279,16 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     return pending;
   };
 
-  const settleBatch = (): BatchSnapshot => {
+  const settleBatch = (): UploaderSnapshot => {
     const snapshot = observable.read();
-    observable.emit("batch:settled", { status: snapshot.status });
+    observable.emit("uploader:settled", { status: snapshot.status });
     return snapshot;
   };
 
   const targetsFor = (id?: string): UploadState[] =>
     id === undefined ? states : states.filter((state) => state.id === id);
 
-  const start = async (): Promise<BatchSnapshot> => {
+  const start = async (): Promise<UploaderSnapshot> => {
     await Promise.all(states.map(drive));
     return settleBatch();
   };
@@ -335,12 +320,12 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     await Promise.all(targets.map((state) => running.get(state.id) ?? Promise.resolve()));
   };
 
-  const pause = async (id?: string): Promise<BatchSnapshot> => {
+  const pause = async (id?: string): Promise<UploaderSnapshot> => {
     await halt(targetsFor(id), "pause");
     return observable.read();
   };
 
-  const cancel = async (id?: string): Promise<BatchSnapshot> => {
+  const cancel = async (id?: string): Promise<UploaderSnapshot> => {
     const targets = targetsFor(id);
     await halt(targets, "cancel");
 
@@ -362,7 +347,7 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     return observable.read();
   };
 
-  const resume = async (id?: string): Promise<BatchSnapshot> => {
+  const resume = async (id?: string): Promise<UploaderSnapshot> => {
     const targets = targetsFor(id);
 
     if (id !== undefined) {
@@ -413,14 +398,10 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
 };
 
 /**
- * Build a Batch from Upload States that already exist.
- *
- * Internal, and deliberately a different symbol from `createBatch`: typing the
- * public constructor with the internal options put `UploadState` — `intent`,
- * `controller`, `intent` — into the shipped declarations as a reachable public
- * type, which `index.ts` promises to keep working and has no intention of.
+ * Build an Uploader from Upload States that already exist. Internal, and a
+ * separate symbol so `UploadState` stays out of the shipped declarations.
  */
-export const createSeededBatch = (options: BatchInternalOptions): BatchController =>
+export const createSeededUploader = (options: UploaderInternalOptions): Uploader =>
   buildBatch(options);
 
-export const createBatch = (options: BatchOptions): BatchController => buildBatch(options);
+export const createUploader = (options: UploaderOptions): Uploader => buildBatch(options);

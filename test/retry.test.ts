@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBatch, defaultClassifier } from "../src/index.js";
+import { createUploader, defaultClassifier } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type FakePlatformOptions } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -8,7 +8,7 @@ import { createFakeTransport } from "./fakes/transport.js";
 const run = async (platformOptions: FakePlatformOptions, tuning = {}) => {
   const platform = createFakePlatform(platformOptions);
   const transport = createFakeTransport();
-  const batch = createBatch({
+  const batch = createUploader({
     files: [makeFile(25 * KB)],
     transport,
     platform,
@@ -72,7 +72,7 @@ describe("the backoff ladder", () => {
       script: () => ({ kind: "network" }),
       randomValues: [1],
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform,
@@ -123,7 +123,7 @@ describe("the backoff ladder", () => {
       script: ({ attempt }) => (attempt === 1 ? { kind: "network" } : { kind: "ok" }),
       randomValues: [1],
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(10 * KB)],
       transport: createFakeTransport(),
       platform,

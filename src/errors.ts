@@ -21,22 +21,13 @@ export const uploadError = (
 ): UploadError => new UploadError(code, message, cause === undefined ? undefined : { cause });
 
 /**
- * Attribute a thrown value to a cause, once, at the point that knows.
- *
- * A no-op on something already attributed, so wrapping at a boundary cannot
- * relabel an error that travelled through it. Without a single place doing this,
- * each catch site picks a code and they disagree — the same failure of
- * `transport.open` reported `TRANSPORT_OPEN_FAILED` at the start of a run and
- * `SEND_FAILED` when it happened mid-flight.
+ * Attribute a thrown value to a cause, at the boundary that knows it. A no-op on
+ * something already attributed, so wrapping cannot relabel an error in transit.
  */
 export const wrap = (code: UploadErrorCode, message: string, error: unknown): UploadError =>
   error instanceof UploadError ? error : uploadError(code, `${message}: ${String(error)}`, error);
 
-/**
- * `UNKNOWN` rather than `SEND_FAILED`: a value reaching here was not attributed
- * by anything that understood it, and calling that a send failure told adopters
- * something specific and possibly untrue.
- */
+/** `UNKNOWN`, not `SEND_FAILED`: nothing here understood what failed. */
 export const toErrorInfo = (error: unknown): UploadErrorInfo =>
   error instanceof UploadError
     ? { code: error.code, message: error.message }

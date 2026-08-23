@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -16,7 +16,7 @@ describe("the Connection Budget during backoff", () => {
         partNumber <= 2 && attempt === 1 ? { kind: "network" } : { kind: "ok" },
     });
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       transport,
       platform,
@@ -37,7 +37,7 @@ describe("the Connection Budget during backoff", () => {
       script: ({ attempt }) => (attempt === 1 ? { kind: "network" } : { kind: "ok" }),
     });
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(80 * KB, "a.mov"), makeFile(80 * KB, "b.mov")],
       transport: createFakeTransport(),
       platform,
@@ -56,7 +56,7 @@ describe("the Connection Budget during backoff", () => {
       script: ({ attempt }) => (attempt === 1 ? { kind: "network" } : { kind: "hang" }),
     });
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(30 * KB)],
       transport: createFakeTransport(),
       platform,

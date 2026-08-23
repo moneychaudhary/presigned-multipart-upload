@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
@@ -17,7 +17,7 @@ const opts = (platform: ReturnType<typeof createFakePlatform>, extra = {}) => ({
 describe("enforcing the Connection Budget", () => {
   it("never has more Parts in flight than the budget allows", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(100 * KB)],
       ...opts(platform, { concurrency: 3 }),
     });
@@ -39,7 +39,7 @@ describe("enforcing the Connection Budget", () => {
 
   it("caps Parts in flight across the whole Batch, not per Upload", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "hang" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB, "a.mov"), makeFile(50 * KB, "b.mov"), makeFile(50 * KB, "c.mov")],
       ...opts(platform, { concurrency: 4 }),
     });
@@ -55,7 +55,7 @@ describe("enforcing the Connection Budget", () => {
 
   it("serialises Parts strictly when the budget is one", async () => {
     const platform = createFakePlatform();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       ...opts(platform, { concurrency: 1 }),
     });
@@ -69,7 +69,7 @@ describe("enforcing the Connection Budget", () => {
   it("uploads several files concurrently, each completing independently", async () => {
     const platform = createFakePlatform();
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport,
       platform,
@@ -87,7 +87,7 @@ describe("enforcing the Connection Budget", () => {
 
   it("aggregates Batch progress across its Uploads", async () => {
     const platform = createFakePlatform();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(15 * KB, "b.mov")],
       ...opts(platform),
     });
@@ -108,7 +108,7 @@ describe("the Connection Budget under a release/acquire race", () => {
     });
     const transport = createFakeTransport();
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [
         makeFile(80 * KB, "a.mov"),
         makeFile(80 * KB, "b.mov"),

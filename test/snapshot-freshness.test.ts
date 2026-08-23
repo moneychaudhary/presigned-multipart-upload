@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch, type BatchSnapshot } from "../src/index.js";
+import { createUploader, type UploaderSnapshot } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -8,7 +8,7 @@ import { flush } from "./fakes/async.js";
 
 const build = (extra = {}) => {
   const platform = createFakePlatform(extra as never);
-  const batch = createBatch({
+  const batch = createUploader({
     files: [makeFile(50 * KB)],
     transport: createFakeTransport(),
     platform,
@@ -23,7 +23,7 @@ const build = (extra = {}) => {
 describe("the snapshot subscribers see", () => {
   it("changes identity exactly when something changed", async () => {
     const { batch } = build();
-    const seen: BatchSnapshot[] = [];
+    const seen: UploaderSnapshot[] = [];
     batch.subscribe((snapshot) => seen.push(snapshot));
 
     await batch.start();

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
 
 const build = (files: File[]) =>
-  createBatch({
+  createUploader({
     files,
     transport: createFakeTransport(),
     platform: createFakePlatform(),

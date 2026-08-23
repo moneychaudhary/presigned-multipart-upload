@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
@@ -30,7 +30,7 @@ const gatedPlatform = () => {
 
 const build = (platform: ReturnType<typeof createFakePlatform>, transport = createFakeTransport()) => ({
   transport,
-  batch: createBatch({
+  batch: createUploader({
     files: [makeFile(50 * KB)],
     transport,
     platform,
@@ -197,7 +197,7 @@ describe("resuming after a pause", () => {
 
   it("is a no-op on an Upload that already succeeded", async () => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -214,7 +214,7 @@ describe("resuming after a pause", () => {
 
   it("is a no-op when nothing is resumable", async () => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -229,7 +229,7 @@ describe("resuming after a pause", () => {
   });
 
   it("rejects an unknown Upload id", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),

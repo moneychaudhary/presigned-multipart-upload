@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -9,7 +9,7 @@ const build = (extra = {}) => {
   const transport = createFakeTransport();
   return {
     transport,
-    batch: createBatch({
+    batch: createUploader({
       files: [makeFile(30 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -60,7 +60,7 @@ describe("what counts as resumable", () => {
 
 describe("an Upload recovered from a previous page session", () => {
   it("is presented as paused rather than failed, with no error to show", async () => {
-    const { createMemoryStore, createResumedBatch } = await import("../src/index.js");
+    const { createMemoryStore, resumeUploader } = await import("../src/index.js");
     const { fakeHandle } = await import("./fakes/platform.js");
 
     const store = createMemoryStore();
@@ -70,7 +70,7 @@ describe("an Upload recovered from a previous page session", () => {
       script: ({ partNumber }) => (partNumber >= 2 ? { kind: "network" } : { kind: "ok" }),
     });
 
-    await createBatch({
+    await createUploader({
       files: [{ file, handle: fakeHandle(file) }],
       transport: createFakeTransport(),
       platform,
@@ -81,7 +81,7 @@ describe("an Upload recovered from a previous page session", () => {
       concurrency: 1,
     }).start();
 
-    const resumed = await createResumedBatch({
+    const resumed = await resumeUploader({
       store,
       transport: createFakeTransport(),
       platform: createFakePlatform({ handlesSupported: true }),

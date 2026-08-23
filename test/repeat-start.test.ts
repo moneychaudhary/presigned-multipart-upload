@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -11,7 +11,7 @@ const build = (extra = {}) => {
   return {
     platform,
     transport,
-    batch: createBatch({
+    batch: createUploader({
       files: [makeFile(30 * KB)],
       transport,
       platform,

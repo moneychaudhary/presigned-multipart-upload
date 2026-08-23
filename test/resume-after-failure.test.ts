@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBatch } from "../src/index.js";
+import { createUploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -19,7 +19,7 @@ const build = (platform: ReturnType<typeof createFakePlatform>, extra = {}) => {
   const transport = createFakeTransport();
   return {
     transport,
-    batch: createBatch({
+    batch: createUploader({
       files: [makeFile(50 * KB)],
       transport,
       platform,
@@ -76,7 +76,7 @@ describe("when Retries run out", () => {
     const platform = createFakePlatform({
       script: ({ uploadId }) => (uploadId === "upload-1" ? { kind: "network" } : { kind: "ok" }),
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport: createFakeTransport(),
       platform,
@@ -161,7 +161,7 @@ describe("resuming a failed Upload", () => {
         if (refuse) throw new Error("finalise unavailable");
       },
     });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -181,7 +181,7 @@ describe("resuming a failed Upload", () => {
   });
 
   it("does not offer a Resume for a file that could never be planned", async () => {
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(0)],
       transport: createFakeTransport(),
       platform: createFakePlatform(),
@@ -198,7 +198,7 @@ describe("resuming a failed Upload", () => {
 
   it("can be driven for one Upload or for the whole Batch", async () => {
     const platform = createFakePlatform({ script: () => ({ kind: "network" }) });
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(25 * KB, "a.mov"), makeFile(25 * KB, "b.mov")],
       transport: createFakeTransport(),
       platform,

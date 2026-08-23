@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBatch, createMemoryStore, type RecordStore } from "../src/index.js";
+import { createUploader, createMemoryStore, type RecordStore } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -23,7 +23,7 @@ const build = (store: RecordStore, extra = {}) => {
   return {
     platform,
     transport,
-    batch: createBatch({
+    batch: createUploader({
       files: [makeFile(30 * KB)],
       transport,
       platform,

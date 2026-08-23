@@ -34,7 +34,7 @@ export interface RecordStore {
    * A rejection costs Durable Resume and nothing else. The Core reports it and
    * carries on: an Upload in flight is not failed, its siblings are not
    * abandoned, and a Record that could not be written simply is not there to
-   * Resume from later. `listResumable` and `createResumedBatch` are the
+   * Resume from later. `listResumable` and `resumeUploader` are the
    * exception — a caller asking to read Records is told when that fails.
    */
   put: (record: UploadRecord) => Promise<void>;

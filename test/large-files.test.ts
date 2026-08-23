@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { autoPartSize, planParts } from "../src/plan.js";
-import { createBatch, createMemoryStore, PROVIDERS, type UploadError } from "../src/index.js";
+import { createUploader, createMemoryStore, PROVIDERS, type UploadError } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, fakeHandle } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -86,7 +86,7 @@ describe("an Upload of a size no fixed Part could serve", () => {
 
   const attempt = async (file: File, partSize?: number) => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [file],
       transport,
       platform: createFakePlatform(),
@@ -119,7 +119,7 @@ describe("an Upload of a size no fixed Part could serve", () => {
 describe("what the Transport is told", () => {
   const openedWith = async (partSize?: number) => {
     const transport = createFakeTransport();
-    const batch = createBatch({
+    const batch = createUploader({
       files: [makeFile(50 * KB)],
       transport,
       platform: createFakePlatform(),
@@ -151,7 +151,7 @@ describe("the Upload Record", () => {
     const store = createMemoryStore();
     const file = makeFile(50 * KB);
 
-    const batch = createBatch({
+    const batch = createUploader({
       files: [{ file, handle: fakeHandle(file) }],
       transport: createFakeTransport(),
       // Every Part from 3 on fails, leaving a Record behind.
