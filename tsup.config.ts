@@ -9,7 +9,10 @@ export default defineConfig({
   },
   format: ["esm", "cjs"],
   dts: true,
-  sourcemap: true,
+  // Off deliberately. tsup embeds sourcesContent, so maps carried the whole
+  // TypeScript source and were 72% of the package — shipping `src` by the back
+  // door, for a library whose source is a click away on GitHub.
+  sourcemap: false,
   clean: true,
   treeshake: true,
   // Frameworks are optional peers; importing the Core must never pull one in.
