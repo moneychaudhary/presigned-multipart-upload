@@ -232,6 +232,94 @@ describe("the Angular adapter", () => {
   });
 });
 
+describe("an Adapter given options instead of an Uploader", () => {
+  const options = () => ({
+    files: [makeFile(25 * KB)],
+    transport: createFakeTransport(),
+    platform: createFakePlatform(),
+    partSize: 10 * KB,
+    provider: { minPartSize: 1 },
+    store: null,
+  });
+
+  it("builds the Uploader itself, in React", async () => {
+    let result: ReturnType<typeof useUploader> | null = null;
+    const files = [makeFile(25 * KB)];
+
+    const View = (): React.ReactElement => {
+      result = useUploader({ ...options(), files });
+      return React.createElement("div", null, result.snapshot.status);
+    };
+
+    render(React.createElement(View));
+    expect(screen.getByText("idle")).toBeTruthy();
+
+    await act(async () => {
+      await result!.start();
+    });
+    expect(screen.getByText("succeeded")).toBeTruthy();
+  });
+
+  it("keeps the same Uploader across renders when the file list has not changed", () => {
+    const files = [makeFile(25 * KB)];
+    const seen: unknown[] = [];
+
+    // A fresh options object every render; only the files are stable, which is
+    // exactly how a component that builds its transport inline behaves.
+    const View = (): React.ReactElement => {
+      seen.push(useUploader({ ...options(), files }).uploader);
+      return React.createElement("div");
+    };
+
+    const { rerender } = render(React.createElement(View));
+    rerender(React.createElement(View));
+    rerender(React.createElement(View));
+
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(seen).size).toBe(1);
+  });
+
+  it("builds a new Uploader when the file list changes", () => {
+    const seen: unknown[] = [];
+
+    const View = ({ files }: { files: File[] }): React.ReactElement => {
+      seen.push(useUploader({ ...options(), files }).uploader);
+      return React.createElement("div");
+    };
+
+    const { rerender } = render(React.createElement(View, { files: [makeFile(25 * KB)] }));
+    rerender(React.createElement(View, { files: [makeFile(25 * KB)] }));
+
+    expect(new Set(seen).size).toBe(2);
+  });
+
+  it("builds the Uploader itself, in Vue", async () => {
+    const scope = effectScope();
+    const bound = scope.run(() => useVueUpload(options()))!;
+
+    expect(bound.snapshot.value.status).toBe("idle");
+    await bound.start();
+    expect(bound.snapshot.value.status).toBe("succeeded");
+
+    scope.stop();
+  });
+
+  it("builds the Uploader itself, in Angular", async () => {
+    const upload = createAngularUploader(options());
+
+    expect(upload.snapshot().status).toBe("idle");
+    await upload.start();
+    expect(upload.snapshot().status).toBe("succeeded");
+  });
+
+  it("still accepts an Uploader, so several components can share one", () => {
+    const controller = build();
+
+    expect(createAngularUploader(controller).uploader).toBe(controller);
+    expect(effectScope().run(() => useVueUpload(controller))!.uploader).toBe(controller);
+  });
+});
+
 describe("the Core on its own", () => {
   it("pulls in no framework", async () => {
     const core = await import("../src/index.js");

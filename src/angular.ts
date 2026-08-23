@@ -1,8 +1,8 @@
 import { signal, type Signal } from "@angular/core";
 import { Observable } from "rxjs";
 
-import { createUploader as createCoreUploader } from "./uploader.js";
-import type { Uploader, UploaderOptions, UploaderSnapshot } from "./types.js";
+import { toUploader, type UploaderSource } from "./uploader.js";
+import type { Uploader, UploaderSnapshot } from "./types.js";
 
 export interface AngularUploader {
   /** Live state, for templates and computed signals. */
@@ -22,15 +22,14 @@ export interface AngularUploader {
 /**
  * Build an Uploader bound to Angular.
  *
- * Takes options rather than a controller — unlike React and Vue, which need the
- * caller to own the lifetime across re-renders, an Angular service constructs
- * once, so one call and one import is the whole story. A factory rather than an
- * @Injectable, so it needs no TestBed and you choose where to provide it.
- * Signals are the primary surface — they behave the same zoned and zoneless;
- * `snapshot$` is a view onto the same state, not a second source of truth.
+ * Give it the options and it builds the Uploader; hand it an Uploader instead
+ * when several services must share one. A factory rather than an @Injectable,
+ * so it needs no TestBed and you choose where to provide it. Signals are the
+ * primary surface — they behave the same zoned and zoneless; `snapshot$` is a
+ * view onto the same state, not a second source of truth.
  */
-export const createUploader = (options: UploaderOptions): AngularUploader => {
-  const controller = createCoreUploader(options);
+export const createUploader = (source: UploaderSource): AngularUploader => {
+  const controller = toUploader(source);
   const state = signal<UploaderSnapshot>(controller.getSnapshot());
   const unsubscribe = controller.subscribe((next) => state.set(next));
 

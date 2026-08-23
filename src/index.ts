@@ -4,8 +4,17 @@
 // not part of the contract.
 
 export { createUploader } from "./uploader.js";
+export type { UploaderSource } from "./uploader.js";
 export { httpTransport } from "./http-transport.js";
-export { PROVIDERS } from "./types.js";
+export {
+  PROVIDERS,
+  // Value and type share each name, so one import gives both.
+  PartStatus,
+  UploadStatus,
+  UploaderStatus,
+  UploadErrorCode,
+  UploadEvent,
+} from "./types.js";
 export { resumeUploader, listResumable } from "./resume.js";
 export { browserPlatform } from "./platform/browser.js";
 export { createIndexedDbStore, createMemoryStore, scopeStore } from "./store.js";
@@ -29,7 +38,6 @@ export type {
   UploadFile,
   UploaderOptions,
   UploaderSnapshot,
-  UploaderStatus,
   CompletedPart,
   EventName,
   FileDescriptor,
@@ -37,7 +45,6 @@ export type {
   OpenResult,
   SignPartsArgs,
   PartSnapshot,
-  PartStatus,
   Platform,
   PlatformFiles,
   Progress,
@@ -46,10 +53,8 @@ export type {
   SendPartArgs,
   SendPartResult,
   Transport,
-  UploadErrorCode,
   UploadErrorInfo,
   UploadInput,
   UploadSnapshot,
-  UploadStatus,
   UploadTuning,
 } from "./types.js";
