@@ -442,21 +442,66 @@ shapes.
 
 By default `open` returns a URL per part, which for 9,910 parts is megabytes of
 JSON, most of it expiring before it is reached. Add a fourth endpoint and the
-library signs a window just ahead of what it is sending:
+library asks for URLs in batches, just ahead of what it is sending:
 
 ```ts
 httpTransport({ baseUrl: "/api/uploads", paths: { sign: "/sign" } });
 
-// POST /api/uploads/sign  { key, uploadId, partNumbers: [41, 42, …] }
+// POST /api/uploads/sign  { key, uploadId, partNumbers: [41, 42, … 60] }
 // →                       { urls: { 41: "https://…", 42: "https://…" } }
 ```
 
-`open` then only has to return `{ key, uploadId }`, and an expired URL costs a
-re-signing of the parts in flight rather than re-opening the whole upload.
+`open` then only has to return `{ key, uploadId }` — drop its URL loop.
 
-The endpoint mints URLs for the part numbers it is given — `upload_part` per
-number in Python, `UploadPartCommand` per number in Node — and returns them
-keyed by number.
+```ts
+app.post("/api/uploads/sign", async (req, res) => {
+  const { key, uploadId, partNumbers } = req.body;
+
+  const entries = await Promise.all(
+    partNumbers.map(async (partNumber) => [
+      partNumber,
+      await getSignedUrl(
+        s3,
+        new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }),
+        { expiresIn: 3600 },
+      ),
+    ]),
+  );
+
+  res.json({ urls: Object.fromEntries(entries) });
+});
+```
+
+```python
+@app.post("/api/uploads/sign")
+def sign(body: dict):
+    urls = {
+        n: s3.generate_presigned_url(
+            "upload_part",
+            Params={
+                "Bucket": BUCKET,
+                "Key": body["key"],
+                "UploadId": body["uploadId"],
+                "PartNumber": n,
+            },
+            ExpiresIn=3600,
+        )
+        for n in body["partNumbers"]
+    }
+    return {"urls": urls}
+```
+
+Sign every number you are given — a missing one fails that part with
+`URL_MISSING`. Returning extras is fine; they are kept and reused.
+
+**Batch size is `urlWindow`**, `concurrency × 4` parts by default. The batch is
+requested when the upload reaches it, so URLs are signed seconds before they are
+used and expiry is close to impossible. Raise it to trade requests for freshness:
+9,910 parts costs ~500 sign calls at the default and 10 at `urlWindow: 1000`.
+
+There is no cliff either way. A batch that outlives its URLs is not fatal — the
+parts that meet the expiry share a single re-sign of what is in flight and carry
+on, so a slow connection on a large window costs a round trip, not the upload.
 
 ### Bucket CORS
 

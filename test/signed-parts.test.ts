@@ -56,6 +56,20 @@ describe("a Transport that signs Parts on demand", () => {
     expect(transport.state.signs.length).toBeGreaterThan(1);
   });
 
+  it("trades sign requests for window size, which is the knob the README sells", async () => {
+    // Ten Parts. The window is the batch size, so a wider one is fewer calls —
+    // and one wide enough for the whole Upload is a single call.
+    const narrow = build(undefined, { concurrency: 1, urlWindow: 2 });
+    await narrow.batch.start();
+
+    const wide = build(undefined, { concurrency: 1, urlWindow: 1000 });
+    await wide.batch.start();
+
+    expect(narrow.transport.state.signs).toHaveLength(5);
+    expect(wide.transport.state.signs).toHaveLength(1);
+    expect(wide.transport.state.signs[0]!.partNumbers).toHaveLength(10);
+  });
+
   it("sends each Part on the url that was signed for it", async () => {
     const { batch, platform } = build(undefined, { concurrency: 1, urlWindow: 3 });
 
