@@ -46,91 +46,87 @@ if (settled.status === "failed") {
 `start()` resolves when everything has settled, and does not throw — a failure is
 reported on the snapshot, so one bad file cannot take the others down.
 
+`httpTransport` calls three JSON endpoints of yours, which is what mints the
+presigned URLs — see [Your backend](#your-backend).
+
 ---
 
-## Your backend
+## Frameworks
 
-The library sends part bytes to presigned URLs. It never holds storage
-credentials, so creating the upload, finalising it and tearing it down are yours.
-Three endpoints:
+### React
 
-| Endpoint | Does |
-| --- | --- |
-| `POST /api/uploads` | Create the multipart upload; return `{ key, uploadId, urls }` |
-| `POST /api/uploads/complete` | Finalise it from the parts and ETags given |
-| `POST /api/uploads/abort` | Tear it down |
+```tsx
+import { httpTransport } from "presigned-multipart-upload";
+import { useUploader, useUploaderEvent } from "presigned-multipart-upload/react";
+
+const Upload = ({ files }: { files: File[] }) => {
+  const { snapshot, uploader, start, pause, resume, cancel } = useUploader({
+    files,
+    transport: httpTransport({ baseUrl: "/api/uploads" }),
+  });
+
+  useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
+
+  return (
+    <>
+      <progress value={snapshot.progress.percent} max={100} />
+      {snapshot.status === "idle" && <button onClick={start}>Upload</button>}
+      {snapshot.status === "uploading" && <button onClick={() => pause()}>Pause</button>}
+      {(snapshot.status === "paused" || snapshot.status === "failed") && (
+        <button onClick={() => resume()}>Continue</button>
+      )}
+      <button onClick={() => cancel()}>Cancel</button>
+    </>
+  );
+};
+```
+
+The hook owns the uploader and rebuilds it only when the file list changes —
+a different set of files is a different upload, and nothing else is. Every other
+option is read at that moment. Hold your files in state rather than rebuilding
+them each render.
+
+Built on `useSyncExternalStore`, so it re-renders when the upload moves and not
+otherwise.
+
+### Vue
 
 ```ts
-app.post("/api/uploads", async (req, res) => {
-  const { name, partCount, resumeFrom } = req.body;
+import { useUploader } from "presigned-multipart-upload/vue";
 
-  // A resume must reuse the upload it was given, never create a second one.
-  const key = resumeFrom?.key ?? `uploads/${crypto.randomUUID()}/${name}`;
-  const uploadId =
-    resumeFrom?.uploadId ??
-    (await s3.send(new CreateMultipartUploadCommand({ Bucket, Key: key }))).UploadId;
-
-  const urls = await Promise.all(
-    Array.from({ length: partCount }, (_, i) =>
-      getSignedUrl(
-        s3,
-        new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: i + 1 }),
-        { expiresIn: 3600 },
-      ),
-    ),
-  );
-
-  res.json({ key, uploadId, urls });
-});
-
-app.post("/api/uploads/complete", async (req, res) => {
-  const { key, uploadId, parts } = req.body;
-  await s3.send(
-    new CompleteMultipartUploadCommand({
-      Bucket,
-      Key: key,
-      UploadId: uploadId,
-      MultipartUpload: {
-        Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag })),
-      },
-    }),
-  );
-  res.json({ ok: true });
-});
-
-app.post("/api/uploads/abort", async (req, res) => {
-  const { key, uploadId } = req.body;
-  await s3.send(new AbortMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId }));
-  res.json({ ok: true });
-});
+const { snapshot, start, pause, resume, cancel } = useUploader({ files, transport });
+// snapshot.value.progress.percent
 ```
 
-Three rules:
+Setup runs once, so there is no lifetime to guard — pass the options and go.
 
-- **Return exactly `partCount` URLs, in part order.** Any other count is rejected
-  rather than uploading to the wrong places.
-- **On `resumeFrom`, return the `uploadId` you were given.** Creating a second
-  upload would splice parts of two uploads into one object. The library checks.
-- **Verify `resumeFrom` belongs to the caller.** It arrives from the client.
+### Angular
 
-Not JSON at those paths? Implement `Transport` yourself — three functions, same
-shapes.
+Takes the options directly — a service constructs once, so there is nothing to
+own across re-renders:
 
-### Bucket CORS
+```ts
+import { createUploader } from "presigned-multipart-upload/angular";
 
-Without `ETag` exposed, every part fails with `MISSING_ETAG`.
+@Injectable()
+export class UploadService implements OnDestroy {
+  private readonly upload = createUploader({ files, transport });
+  readonly snapshot = this.upload.snapshot;    // Signal
+  readonly snapshot$ = this.upload.snapshot$;  // Observable
 
-```json
-[{
-  "AllowedOrigins": ["https://your-app.example"],
-  "AllowedMethods": ["PUT"],
-  "AllowedHeaders": ["*"],
-  "ExposeHeaders": ["ETag"]
-}]
+  start = () => this.upload.start();
+  ngOnDestroy() { this.upload.destroy(); }
+}
 ```
 
-Add a lifecycle rule to delete incomplete multipart uploads after ~7 days.
-Abandoned parts are billed and do not show up in a bucket listing.
+Every adapter also accepts an uploader you built yourself with `createUploader`,
+for when several components share one. `.uploader` on the result is the uploader
+underneath, for `on(...)`.
+
+### Anything else
+
+`uploader.subscribe` calls back immediately and returns an unsubscriber, which is
+the readable-store contract as-is. No adapter needed.
 
 ---
 
@@ -211,85 +207,6 @@ uploader.on(UploadEvent.UploadFailed, ({ error }) => {
 
 `PartStatus` and `UploadStatus` are there too. The string values are the
 contract, so comparing against `"succeeded"` directly is equally fine.
-
----
-
-## Frameworks
-
-### React
-
-```tsx
-import { httpTransport } from "presigned-multipart-upload";
-import { useUploader, useUploaderEvent } from "presigned-multipart-upload/react";
-
-const Upload = ({ files }: { files: File[] }) => {
-  const { snapshot, uploader, start, pause, resume, cancel } = useUploader({
-    files,
-    transport: httpTransport({ baseUrl: "/api/uploads" }),
-  });
-
-  useUploaderEvent(uploader, "upload:succeeded", ({ id }) => toast.success(id));
-
-  return (
-    <>
-      <progress value={snapshot.progress.percent} max={100} />
-      {snapshot.status === "idle" && <button onClick={start}>Upload</button>}
-      {snapshot.status === "uploading" && <button onClick={() => pause()}>Pause</button>}
-      {(snapshot.status === "paused" || snapshot.status === "failed") && (
-        <button onClick={() => resume()}>Continue</button>
-      )}
-      <button onClick={() => cancel()}>Cancel</button>
-    </>
-  );
-};
-```
-
-The hook owns the uploader and rebuilds it only when the file list changes —
-a different set of files is a different upload, and nothing else is. Every other
-option is read at that moment. Hold your files in state rather than rebuilding
-them each render.
-
-Built on `useSyncExternalStore`, so it re-renders when the upload moves and not
-otherwise.
-
-### Vue
-
-```ts
-import { useUploader } from "presigned-multipart-upload/vue";
-
-const { snapshot, start, pause, resume, cancel } = useUploader({ files, transport });
-// snapshot.value.progress.percent
-```
-
-Setup runs once, so there is no lifetime to guard — pass the options and go.
-
-### Angular
-
-Takes the options directly — a service constructs once, so there is nothing to
-own across re-renders:
-
-```ts
-import { createUploader } from "presigned-multipart-upload/angular";
-
-@Injectable()
-export class UploadService implements OnDestroy {
-  private readonly upload = createUploader({ files, transport });
-  readonly snapshot = this.upload.snapshot;    // Signal
-  readonly snapshot$ = this.upload.snapshot$;  // Observable
-
-  start = () => this.upload.start();
-  ngOnDestroy() { this.upload.destroy(); }
-}
-```
-
-Every adapter also accepts an uploader you built yourself with `createUploader`,
-for when several components share one. `.uploader` on the result is the uploader
-underneath, for `on(...)`.
-
-### Anything else
-
-`uploader.subscribe` calls back immediately and returns an unsubscriber, which is
-the readable-store contract as-is. No adapter needed.
 
 ---
 
@@ -385,10 +302,147 @@ whole MiB that keeps the file inside the provider's 10,000-part limit.
 Memory in flight is roughly `partSize × concurrency` — about 155 MiB for a
 300 GiB file at the defaults.
 
-**Past about a thousand parts, sign on demand.** By default `open` returns a URL
-per part, which for 9,910 parts is megabytes of JSON, most of it expiring before
-it is reached. Add a fourth endpoint and the library signs a window just ahead of
-what it is sending:
+**Past about a thousand parts, have your backend sign on demand** rather than
+minting every URL up front — see [Signing on demand](#signing-on-demand).
+
+A `File` is a handle, not the bytes: holding one in a variable, in React state,
+or in a store costs a pointer no matter how large the file is. Each part is read
+straight from disk as it is sent, so nothing is loaded until it is needed and
+nothing is held after it lands.
+
+---
+
+## Your backend
+
+The library sends part bytes to presigned URLs. It never holds storage
+credentials, so creating the upload, finalising it and tearing it down are yours.
+Three endpoints:
+
+| Endpoint | Does |
+| --- | --- |
+| `POST /api/uploads` | Create the multipart upload; return `{ key, uploadId, urls }` |
+| `POST /api/uploads/complete` | Finalise it from the parts and ETags given |
+| `POST /api/uploads/abort` | Tear it down |
+
+Three rules:
+
+- **Return exactly `partCount` URLs, in part order.** Any other count is rejected
+  rather than uploading to the wrong places.
+- **On `resumeFrom`, return the `uploadId` you were given.** Creating a second
+  upload would splice parts of two uploads into one object. The library checks.
+- **Verify `resumeFrom` belongs to the caller.** It arrives from the client.
+
+### Node
+
+```ts
+app.post("/api/uploads", async (req, res) => {
+  const { name, partCount, resumeFrom } = req.body;
+
+  // A resume must reuse the upload it was given, never create a second one.
+  const key = resumeFrom?.key ?? `uploads/${crypto.randomUUID()}/${name}`;
+  const uploadId =
+    resumeFrom?.uploadId ??
+    (await s3.send(new CreateMultipartUploadCommand({ Bucket, Key: key }))).UploadId;
+
+  const urls = await Promise.all(
+    Array.from({ length: partCount }, (_, i) =>
+      getSignedUrl(
+        s3,
+        new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: i + 1 }),
+        { expiresIn: 3600 },
+      ),
+    ),
+  );
+
+  res.json({ key, uploadId, urls });
+});
+
+app.post("/api/uploads/complete", async (req, res) => {
+  const { key, uploadId, parts } = req.body;
+  await s3.send(
+    new CompleteMultipartUploadCommand({
+      Bucket,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag })),
+      },
+    }),
+  );
+  res.json({ ok: true });
+});
+
+app.post("/api/uploads/abort", async (req, res) => {
+  const { key, uploadId } = req.body;
+  await s3.send(new AbortMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId }));
+  res.json({ ok: true });
+});
+```
+
+### Python
+
+```python
+import uuid
+import boto3
+from fastapi import FastAPI
+
+s3 = boto3.client("s3")
+app = FastAPI()
+BUCKET = "your-bucket"
+
+
+@app.post("/api/uploads")
+def open_upload(body: dict):
+    # A resume must reuse the upload it was given, never create a second one.
+    resume = body.get("resumeFrom")
+    key = resume["key"] if resume else f"uploads/{uuid.uuid4()}/{body['name']}"
+    upload_id = (
+        resume["uploadId"]
+        if resume
+        else s3.create_multipart_upload(Bucket=BUCKET, Key=key)["UploadId"]
+    )
+
+    urls = [
+        s3.generate_presigned_url(
+            "upload_part",
+            Params={"Bucket": BUCKET, "Key": key, "UploadId": upload_id, "PartNumber": n},
+            ExpiresIn=3600,
+        )
+        for n in range(1, body["partCount"] + 1)
+    ]
+
+    return {"key": key, "uploadId": upload_id, "urls": urls}
+
+
+@app.post("/api/uploads/complete")
+def complete(body: dict):
+    s3.complete_multipart_upload(
+        Bucket=BUCKET,
+        Key=body["key"],
+        UploadId=body["uploadId"],
+        MultipartUpload={
+            "Parts": [
+                {"PartNumber": p["partNumber"], "ETag": p["eTag"]} for p in body["parts"]
+            ]
+        },
+    )
+    return {"ok": True}
+
+
+@app.post("/api/uploads/abort")
+def abort(body: dict):
+    s3.abort_multipart_upload(Bucket=BUCKET, Key=body["key"], UploadId=body["uploadId"])
+    return {"ok": True}
+```
+
+Not JSON at those paths? Implement `Transport` yourself — three functions, same
+shapes.
+
+### Signing on demand
+
+By default `open` returns a URL per part, which for 9,910 parts is megabytes of
+JSON, most of it expiring before it is reached. Add a fourth endpoint and the
+library signs a window just ahead of what it is sending:
 
 ```ts
 httpTransport({ baseUrl: "/api/uploads", paths: { sign: "/sign" } });
@@ -399,6 +453,26 @@ httpTransport({ baseUrl: "/api/uploads", paths: { sign: "/sign" } });
 
 `open` then only has to return `{ key, uploadId }`, and an expired URL costs a
 re-signing of the parts in flight rather than re-opening the whole upload.
+
+The endpoint mints URLs for the part numbers it is given — `upload_part` per
+number in Python, `UploadPartCommand` per number in Node — and returns them
+keyed by number.
+
+### Bucket CORS
+
+Without `ETag` exposed, every part fails with `MISSING_ETAG`.
+
+```json
+[{
+  "AllowedOrigins": ["https://your-app.example"],
+  "AllowedMethods": ["PUT"],
+  "AllowedHeaders": ["*"],
+  "ExposeHeaders": ["ETag"]
+}]
+```
+
+Add a lifecycle rule to delete incomplete multipart uploads after ~7 days.
+Abandoned parts are billed and do not show up in a bucket listing.
 
 ---
 
