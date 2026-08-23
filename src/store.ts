@@ -176,5 +176,14 @@ export const createIndexedDbStore = (dbName = DB_NAME): RecordStore => {
  * not. Opting out is one word; opting in was a step most callers would only
  * discover having already lost an upload.
  */
-export const defaultStore = (): RecordStore | null =>
-  typeof indexedDB === "undefined" ? null : createIndexedDbStore();
+let shared: RecordStore | null | undefined;
+
+export const defaultStore = (): RecordStore | null => {
+  // Built once and shared. The adapter holds its connection open on purpose,
+  // so one per caller would be one connection per Upload for the page's life,
+  // with no handle to close them by.
+  if (shared === undefined) {
+    shared = typeof indexedDB === "undefined" ? null : createIndexedDbStore();
+  }
+  return shared;
+};
