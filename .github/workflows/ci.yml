@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+
+    # The range `engines` promises. The floor is 20 because `File` — the type
+    # `files` takes — only became a Node global there; on 18 a consumer cannot
+    # construct the input at all without a polyfill.
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:docs
+      - run: npm run build
+
+  package:
+    name: Consumer smoke test
+    runs-on: ubuntu-latest
+
+    # The unit suite imports from src, so it cannot see the package boundary:
+    # an empty dist and a wrong `exports` condition both passed it once. This
+    # installs the real tarball and uses it as an adopter would.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run test:package
+
+  integration:
+    name: Against a real S3 endpoint
+    runs-on: ubuntu-latest
+
+    # The unit suite runs entirely against fakes. This is the only place ETag
+    # quoting, Part ordering and the finalise payload meet a real provider.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # A step rather than a service container: the official image needs the
+      # `server /data` command and services cannot supply one. This is exactly
+      # what `npm run minio:up` does locally, so the two cannot drift.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+
+      # The suite skips itself when MinIO is unreachable, which would turn a
+      # broken container into a green run. Fail here instead.
+      - name: Confirm MinIO is answering
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
+              echo "MinIO is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO never became reachable; the integration suite would have skipped itself."
+          docker logs minio || true
+          exit 1
+
+      - run: npm run test:integration
+        env:
+          MINIO_ENDPOINT: http://127.0.0.1:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
