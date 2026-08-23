@@ -88,7 +88,8 @@
     "minio:down": "docker rm -f minio-test",
     "prepack": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test",
-    "test:package": "node scripts/smoke.mjs"
+    "test:package": "node scripts/smoke.mjs",
+    "test:docs": "node scripts/check-readme.mjs"
   },
   "keywords": [
     "s3",
@@ -130,6 +131,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/wicg-file-system-access": "^2023.10.7",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.6",
     "react": "^19.2.8",
