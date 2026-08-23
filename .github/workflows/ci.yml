@@ -11,12 +11,13 @@ jobs:
     name: Node ${{ matrix.node }}
     runs-on: ubuntu-latest
 
-    # The range `engines` promises. A feature newer than the floor fails here
-    # rather than in an adopter's build.
+    # The range `engines` promises. The floor is 20 because `File` — the type
+    # `files` takes — only became a Node global there; on 18 a consumer cannot
+    # construct the input at all without a polyfill.
     strategy:
       fail-fast: false
       matrix:
-        node: [18, 20, 22]
+        node: [20, 22, 24]
 
     steps:
       - uses: actions/checkout@v4

@@ -551,6 +551,7 @@ Abandoned parts are billed and do not show up in a bucket listing.
 | Code | Means |
 | --- | --- |
 | `MISSING_ETAG` | **Expose `ETag` in your bucket's CORS** |
+| `INVALID_OPTIONS` | An argument to `createUploader` or `httpTransport` was the wrong shape |
 | `RETRIES_EXHAUSTED` | A part used its whole budget — offer `resume()` |
 | `SEND_FAILED` | A part failed against storage |
 | `EMPTY_FILE` | A file with no bytes |

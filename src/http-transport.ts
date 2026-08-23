@@ -1,4 +1,5 @@
 import { uploadError } from "./errors.js";
+import { assertHttpTransportOptions } from "./validate.js";
 import type {
   CompletedPart,
   FileDescriptor,
@@ -37,6 +38,8 @@ export interface HttpTransportOptions {
  * mid-open does not actually cancel anything.
  */
 export const httpTransport = (options: HttpTransportOptions): Transport => {
+  assertHttpTransportOptions(options);
+
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   const base = options.baseUrl.replace(/\/$/, "");
   const at = (path: string | undefined, fallback: string): string =>

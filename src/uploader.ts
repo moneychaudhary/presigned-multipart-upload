@@ -4,6 +4,7 @@ import { createObservable } from "./observable.js";
 import { browserPlatform } from "./platform/browser.js";
 import { createSemaphore } from "./semaphore.js";
 import { DEFAULT_RECORD_TTL_MS, defaultStore, type UploadRecord } from "./store.js";
+import { assertUploaderOptions, isFileLike } from "./validate.js";
 import { PROVIDERS } from "./types.js";
 import type {
   Uploader,
@@ -108,7 +109,7 @@ const toRecord = (state: UploadState, now: number): UploadRecord => ({
 });
 
 const toInput = (entry: UploadFile): { file: File; handle: unknown } =>
-  entry instanceof File ? { file: entry, handle: null } : { file: entry.file, handle: entry.handle ?? null };
+  isFileLike(entry) ? { file: entry, handle: null } : { file: entry.file, handle: entry.handle ?? null };
 
 interface UploaderInternalOptions extends UploaderOptions {
   /** Pre-built states, used when taking up Uploads recovered from the store. */
@@ -405,7 +406,10 @@ const buildBatch = (options: UploaderInternalOptions): Uploader => {
 export const createSeededUploader = (options: UploaderInternalOptions): Uploader =>
   buildBatch(options);
 
-export const createUploader = (options: UploaderOptions): Uploader => buildBatch(options);
+export const createUploader = (options: UploaderOptions): Uploader => {
+  assertUploaderOptions(options);
+  return buildBatch(options);
+};
 
 /**
  * What every framework Adapter accepts: the options, or an Uploader you already

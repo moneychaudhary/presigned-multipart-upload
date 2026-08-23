@@ -4,7 +4,7 @@
   "description": "Framework-independent multipart uploads to presigned URLs, with automatic retry, cancel, pause and resume from the parts that never landed.",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "homepage": "https://github.com/moneychaudhary/presigned-multipart-upload#readme",
   "repository": {

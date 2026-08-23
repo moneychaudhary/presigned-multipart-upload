@@ -179,6 +179,8 @@ export const UploaderStatus = {
 export type UploaderStatus = (typeof UploaderStatus)[keyof typeof UploaderStatus];
 
 export const UploadErrorCode = {
+  /** An argument to a public entry point was the wrong shape. */
+  InvalidOptions: "INVALID_OPTIONS",
   EmptyFile: "EMPTY_FILE",
   InvalidPartSize: "INVALID_PART_SIZE",
   PartCountExceeded: "PART_COUNT_EXCEEDED",
