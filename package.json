@@ -1,0 +1,145 @@
+{
+  "name": "presigned-multipart-upload",
+  "version": "0.1.0",
+  "description": "Framework-independent multipart uploads to presigned URLs, with automatic retry, cancel, pause and resume from the parts that never landed.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://github.com/moneychaudhary/presigned-multipart-upload#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moneychaudhary/presigned-multipart-upload.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moneychaudhary/presigned-multipart-upload/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react.d.ts"
+      ],
+      "angular": [
+        "./dist/angular.d.ts"
+      ],
+      "vue": [
+        "./dist/vue.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./angular": {
+      "import": {
+        "types": "./dist/angular.d.ts",
+        "default": "./dist/angular.js"
+      },
+      "require": {
+        "types": "./dist/angular.d.cts",
+        "default": "./dist/angular.cjs"
+      }
+    },
+    "./vue": {
+      "import": {
+        "types": "./dist/vue.d.ts",
+        "default": "./dist/vue.js"
+      },
+      "require": {
+        "types": "./dist/vue.d.cts",
+        "default": "./dist/vue.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "minio:up": "docker run -d -p 9000:9000 --name minio-test minio/minio server /data",
+    "minio:down": "docker rm -f minio-test",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test",
+    "test:package": "node scripts/smoke.mjs",
+    "test:docs": "node scripts/check-readme.mjs"
+  },
+  "keywords": [
+    "s3",
+    "multipart",
+    "upload",
+    "presigned",
+    "resumable",
+    "retry",
+    "chunked-upload",
+    "react",
+    "angular",
+    "vue"
+  ],
+  "peerDependencies": {
+    "@angular/core": ">=17",
+    "react": ">=18",
+    "rxjs": ">=7",
+    "vue": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@angular/core": "^21.2.21",
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@aws-sdk/client-s3": "^3.1116.0",
+    "@aws-sdk/s3-request-presigner": "^3.1116.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/wicg-file-system-access": "^2023.10.7",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.11.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "rxjs": "^7.8.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "vue": "^3.5.41"
+  }
+}

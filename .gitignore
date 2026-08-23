@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+*.tgz
+.DS_Store
+
+# Claude Code / agent tooling — local only
+CLAUDE.md
+.claude/
+.scratch/
+
+# Working notes — local only, not part of the published package
+docs/
+CONTEXT.md
