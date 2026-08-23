@@ -31,8 +31,6 @@ export interface UploadState {
   controller: AbortController | null;
   /** Durable reference to the file, where the browser could give one. */
   handle: unknown | null;
-  /** Bumped on every mutation, so a snapshot can be reused until it changes. */
-  version: number;
   /** Settled when the Parts are planned; 0 until then. Carried by the Record. */
   partSize: number;
 }
@@ -98,7 +96,6 @@ export const createUploadState = (
   intent: "run",
   controller: null,
   handle,
-  version: 0,
   partSize: 0,
 });
 
@@ -337,6 +334,9 @@ const sendPartWithRetry = async (
   const failPart = (error: UploadError): never => {
     part.status = "failed";
     part.loaded = 0;
+    // Announced before unwinding. It used to throw straight out, leaving the
+    // Part reported as still uploading until something else happened to notify.
+    deps.onChange(state);
     throw error;
   };
 
@@ -353,6 +353,13 @@ const sendPartWithRetry = async (
     // Null until obtained, so the catch can tell "the url was refused" from
     // "there was never a url" — a signing failure that no Refresh would fix.
     let url: PartUrl | null = null;
+
+    // Taken per Attempt rather than for the whole retry loop. Held across the
+    // backoff, a Part asleep for fifteen seconds occupies a connection it is
+    // not using — and at the default Budget, five Parts backing off together
+    // stalled every other Part in the Batch behind them.
+    const release = await deps.budget.acquire();
+    let failure: unknown;
 
     try {
       // Taken inside the Attempt, so a failure is judged against the urls this
@@ -371,6 +378,13 @@ const sendPartWithRetry = async (
       await deps.onRecord(state, "progress");
       return;
     } catch (error) {
+      failure = error;
+    } finally {
+      release();
+    }
+
+    {
+      const error = failure;
       stopIfHalted();
 
       // Losing the connection mid-Attempt is the same situation as being offline
@@ -436,6 +450,11 @@ const sendPartWithRetry = async (
       deps.onRetrying(state.id, part.partNumber, part.attempts, delayMs);
       parkPart();
       await platform.sleep(delayMs, state.controller!.signal);
+      // A Pause or Cancel that arrived during the sleep must settle as one.
+      // Checked here rather than relying on the Platform, whose sleep may either
+      // resolve early or reject on abort — a rejection inside the catch block
+      // would have escaped the loop entirely and settled a Pause as a failure.
+      stopIfHalted();
     }
   }
 };
@@ -529,20 +548,17 @@ export const runUpload = async (state: UploadState, deps: UploadDeps): Promise<v
 
   await Promise.all(
     outstanding.map(async (part) => {
-      // One queue, shared across the whole Batch. The browser's cap is per
-      // host, so that is where the limit belongs; a second per-Upload queue on
-      // top only added an await and a fairness rule the FIFO already gives.
-      const release = await deps.budget.acquire();
       try {
         if (failures.length > 0 || halted(state)) return;
+        // The Connection Budget is one queue shared across the whole Batch —
+        // the browser's cap is per host, so that is where the limit belongs.
+        // It is acquired per Attempt inside, not held for the whole retry loop.
         await sendPartWithRetry(state, part, deps, urls);
       } catch (error) {
         failures.push(error);
         // One doomed Part ends the run; the others stop rather than burn
         // bandwidth on an Upload that is already going to need a Resume.
         state.controller?.abort();
-      } finally {
-        release();
       }
     }),
   );

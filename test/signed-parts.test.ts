@@ -146,7 +146,7 @@ describe("a Transport that signs Parts on demand", () => {
     await batch.start();
 
     expect(transport.state.opens).toHaveLength(1);
-    expect(transport.state.completes[0]!.uploadId).toBe("upload-0");
+    expect(transport.state.completes[0]!.uploadId).toBe("s3-upload-0");
   });
 });
 

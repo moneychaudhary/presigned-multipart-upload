@@ -1,3 +1,9 @@
+import {
+  abortFailure,
+  httpFailure,
+  networkFailure,
+  timeoutFailure,
+} from "../../src/platform/failures.js";
 import type { Platform, SendPartArgs, SendPartResult } from "../../src/index.js";
 
 /** What a scripted send should do, chosen per part number and attempt. */
@@ -21,6 +27,8 @@ export interface SendCall {
   url: string;
   size: number;
   contentType: string | undefined;
+  /** The per-Attempt deadline the Core asked for; 0 when disabled. */
+  timeoutMs: number;
 }
 
 export type Script = (call: SendCall) => ScriptedOutcome;
@@ -32,6 +40,8 @@ export interface FakePlatformState {
   peakInFlight: number;
   /** Every delay the Core asked to sleep for, in order. */
   sleeps: number[];
+  /** How many of those were entered with the signal already aborted. */
+  abortedSleeps: number;
 }
 
 export interface FakePlatform extends Platform {
@@ -60,10 +70,7 @@ export interface FakePlatformOptions {
 /** A stand-in for a FileSystemFileHandle: something that can give back a File. */
 export const fakeHandle = (file: File): { file: File } => ({ file });
 
-const abortError = (): Error => Object.assign(new Error("aborted"), { name: "AbortError" });
-
-const namedError = (name: string, message: string, extra: object = {}): Error =>
-  Object.assign(new Error(message), { name, ...extra });
+const abortError = (): Error => abortFailure("aborted");
 
 /**
  * A Platform whose every interaction with the outside world is scripted.
@@ -75,7 +82,7 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
   const script: Script = options.script ?? (() => ({ kind: "ok" }));
   const randomValues = options.randomValues ?? [0.5];
 
-  const state: FakePlatformState = { calls: [], peakInFlight: 0, sleeps: [] };
+  const state: FakePlatformState = { calls: [], peakInFlight: 0, sleeps: [], abortedSleeps: 0 };
   const attemptsByPart = new Map<string, number>();
   const hung = new Map<string, (outcome: ScriptedOutcome) => void>();
   const onlineListeners = new Set<() => void>();
@@ -91,12 +98,14 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
         return { eTag: outcome.eTag ?? `"etag-${partNumber}"` };
       case "no-etag":
         return { eTag: null };
+      // Built from the same definitions the browser Platform uses, so the fake
+      // cannot drift into disagreeing with it about what the Classifier reads.
       case "network":
-        throw namedError("NetworkError", "network down");
+        throw networkFailure(partNumber);
       case "timeout":
-        throw namedError("TimeoutError", "timed out");
+        throw timeoutFailure(partNumber, 0);
       case "status":
-        throw namedError("HttpError", `status ${outcome.status}`, { status: outcome.status });
+        throw httpFailure(partNumber, outcome.status);
       default:
         throw new Error(
           `releaseHung was given ${JSON.stringify(outcome)}; a hung send must be settled with a real outcome`,
@@ -118,6 +127,7 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
       url: args.url,
       size: args.body.size,
       contentType: args.contentType,
+      timeoutMs: args.timeoutMs,
     };
     state.calls.push(call);
 
@@ -167,8 +177,11 @@ export const createFakePlatform = (options: FakePlatformOptions = {}): FakePlatf
       return `${options.idPrefix ?? "upload"}-${nextId}`;
     },
     now: () => options.now ?? 0,
-    sleep: async (ms: number) => {
+    sleep: async (ms: number, signal?: AbortSignal) => {
       state.sleeps.push(ms);
+      // Resolves rather than rejects on abort, which is the obligation the
+      // Platform interface states. Recorded so a test can tell the difference.
+      if (signal?.aborted) state.abortedSleeps += 1;
     },
     random: () => {
       const value = randomValues[randomIndex % randomValues.length]!;

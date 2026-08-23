@@ -90,7 +90,7 @@ describe("pausing", () => {
     await batch.pause();
     await run;
 
-    expect(paused).toHaveBeenCalledWith({ uploadId: "upload-1" });
+    expect(paused).toHaveBeenCalledWith({ id: "upload-1" });
   });
 
   it("is idempotent", async () => {
@@ -168,7 +168,7 @@ describe("resuming after a pause", () => {
     expect(transport.state.opens).toHaveLength(2);
     expect(transport.state.opens[1]!.resumeFrom).toEqual({
       key: "uploads/clip.mov",
-      uploadId: "upload-0",
+      uploadId: "s3-upload-0",
     });
     // Every send after the Resume used a url minted by the second Opening.
     expect(

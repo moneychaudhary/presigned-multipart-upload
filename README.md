@@ -339,14 +339,18 @@ Rendering "upload failed" from a snapshot is right; firing a toast from one is
 not — you would fire it again on every later render. Moments are events:
 
 ```ts
-batch.on("part:landed", ({ uploadId, partNumber }) => {});
+batch.on("part:landed", ({ id, partNumber }) => {});
 batch.on("part:retrying", ({ partNumber, attempt, delayMs }) => {});
-batch.on("upload:succeeded", ({ uploadId }) => {});
-batch.on("upload:failed", ({ uploadId, error }) => {});
-batch.on("upload:cancelled", ({ uploadId }) => {});
-batch.on("upload:paused", ({ uploadId }) => {});
+batch.on("upload:succeeded", ({ id }) => {});
+batch.on("upload:failed", ({ id, error }) => {});
+batch.on("upload:cancelled", ({ id }) => {});
+batch.on("upload:paused", ({ id }) => {});
 batch.on("batch:settled", ({ status }) => {});
 ```
+
+`id` is the library's own identifier for an upload — `snapshot.uploads[n].id`,
+and what `resume`, `pause` and `cancel` take. Not `uploadId`, which on a snapshot
+means the storage provider's multipart id.
 
 Each returns an unsubscribe function.
 
@@ -690,7 +694,7 @@ than states:
 
 ```tsx
 import { useUploadEvent } from "presigned-multipart-upload/react";
-useUploadEvent(batch, "upload:succeeded", ({ uploadId }) => toast.success(uploadId));
+useUploadEvent(batch, "upload:succeeded", ({ id }) => toast.success(id));
 ```
 
 ### Angular

@@ -34,7 +34,7 @@ describe("a Presigned URL that expired mid-upload", () => {
     expect(transport.state.opens).toHaveLength(2);
     expect(transport.state.opens[1]!.resumeFrom).toEqual({
       key: "uploads/clip.mov",
-      uploadId: "upload-0",
+      uploadId: "s3-upload-0",
     });
   });
 

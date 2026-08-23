@@ -55,6 +55,15 @@ export interface Platform {
    */
   newId: () => string;
   now: () => number;
+  /**
+   * Wait, interruptibly.
+   *
+   * Must **resolve** when the signal aborts, never reject. The usual convention
+   * for an abortable sleep is to reject with an `AbortError`, and following it
+   * here turns a Pause into a failure: the Core sleeps inside its Retry handler,
+   * so a rejection unwinds past the check that would have settled the Upload as
+   * paused. Resolving early lets that check run.
+   */
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   random: () => number;
   isOnline: () => boolean;
@@ -218,13 +227,21 @@ export interface BatchSnapshot {
   file: UploadSnapshot | null;
 }
 
+/**
+ * `id` throughout is the library's own identifier for an Upload —
+ * `UploadSnapshot.id`, and what `resume`, `pause` and `cancel` match on.
+ *
+ * Not `uploadId`, which on a snapshot means the storage provider's multipart
+ * identifier. They used to share the name here, so `batch.resume(upload.uploadId)`
+ * compiled, read as obviously right, and threw.
+ */
 export interface BatchEvents {
-  "part:landed": { uploadId: string; partNumber: number };
-  "part:retrying": { uploadId: string; partNumber: number; attempt: number; delayMs: number };
-  "upload:succeeded": { uploadId: string };
-  "upload:failed": { uploadId: string; error: UploadErrorInfo };
-  "upload:cancelled": { uploadId: string };
-  "upload:paused": { uploadId: string };
+  "part:landed": { id: string; partNumber: number };
+  "part:retrying": { id: string; partNumber: number; attempt: number; delayMs: number };
+  "upload:succeeded": { id: string };
+  "upload:failed": { id: string; error: UploadErrorInfo };
+  "upload:cancelled": { id: string };
+  "upload:paused": { id: string };
   "batch:settled": { status: BatchStatus };
 }
 
@@ -332,11 +349,11 @@ export interface BatchOptions extends UploadTuning {
 export interface BatchController {
   start: () => Promise<BatchSnapshot>;
   /** Continue Uploads that are paused or failed, from the Parts that never landed. */
-  resume: (uploadId?: string) => Promise<BatchSnapshot>;
+  resume: (id?: string) => Promise<BatchSnapshot>;
   /** Halt without discarding. Resumable. */
-  pause: (uploadId?: string) => Promise<BatchSnapshot>;
+  pause: (id?: string) => Promise<BatchSnapshot>;
   /** Discard. Tears the Upload down at the provider; terminal. */
-  cancel: (uploadId?: string) => Promise<BatchSnapshot>;
+  cancel: (id?: string) => Promise<BatchSnapshot>;
   getSnapshot: () => BatchSnapshot;
   subscribe: (listener: (snapshot: BatchSnapshot) => void) => () => void;
   on: <T extends EventName>(type: T, handler: (payload: BatchEvents[T]) => void) => () => void;

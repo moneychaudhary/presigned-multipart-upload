@@ -130,12 +130,12 @@ not, because you would fire it on every subsequent render too. Moments are
 events:
 
 ```ts
-batch.on("part:landed", ({ uploadId, partNumber }) => {});
+batch.on("part:landed", ({ id, partNumber }) => {});
 batch.on("part:retrying", ({ partNumber, attempt, delayMs }) => {});
-batch.on("upload:succeeded", ({ uploadId }) => {});
-batch.on("upload:failed", ({ uploadId, error }) => {});
-batch.on("upload:cancelled", ({ uploadId }) => {});
-batch.on("upload:paused", ({ uploadId }) => {});
+batch.on("upload:succeeded", ({ id }) => {});
+batch.on("upload:failed", ({ id, error }) => {});
+batch.on("upload:cancelled", ({ id }) => {});
+batch.on("upload:paused", ({ id }) => {});
 batch.on("batch:settled", ({ status }) => {});
 ```
 

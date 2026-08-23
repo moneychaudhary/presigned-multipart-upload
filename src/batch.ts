@@ -161,13 +161,13 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
 
   // An Upload's snapshot is rebuilt only when that Upload changed. Without this
   // a progress tick on one file re-copied the Parts of every file in the Batch.
-  const cache = new Map<string, { version: number; snapshot: UploadSnapshot }>();
+  const cache = new Map<string, UploadSnapshot>();
 
   const cachedSnapshot = (state: UploadState): UploadSnapshot => {
     const hit = cache.get(state.id);
-    if (hit !== undefined && hit.version === state.version) return hit.snapshot;
+    if (hit !== undefined) return hit;
     const snapshot = snapshotUpload(state);
-    cache.set(state.id, { version: state.version, snapshot });
+    cache.set(state.id, snapshot);
     return snapshot;
   };
 
@@ -186,13 +186,20 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
   const observable = createObservable(buildSnapshot);
 
   /**
-   * Record that an Upload changed. The per-Upload snapshot cache is keyed on
-   * `version`, so every mutation must come through here — bumping the version
-   * anywhere else, or invalidating without bumping it, silently serves a stale
-   * snapshot.
+   * Record that an Upload changed.
+   *
+   * One operation, deliberately. This used to bump a `version` counter on the
+   * Upload State that the cache compared against, which meant two things had to
+   * happen in the right order every time: bump, then invalidate. Bumping
+   * elsewhere, or invalidating without bumping, served a frozen snapshot
+   * forever — a UI that quietly stops updating, with no error anywhere. There is
+   * nothing left to get out of step.
+   *
+   * Every mutation of an Upload State must still come through here. That is the
+   * one rule, and it is now the only one.
    */
   const touch = (state: UploadState): void => {
-    state.version += 1;
+    cache.delete(state.id);
     observable.invalidate();
   };
 
@@ -252,18 +259,18 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     budget,
     onChange: touch,
     onPartLanded: (uploadId, partNumber) =>
-      observable.emit("part:landed", { uploadId, partNumber }),
+      observable.emit("part:landed", { id: uploadId, partNumber }),
     onRetrying: (uploadId, partNumber, attempt, delayMs) =>
-      observable.emit("part:retrying", { uploadId, partNumber, attempt, delayMs }),
+      observable.emit("part:retrying", { id: uploadId, partNumber, attempt, delayMs }),
     onRecord: persist,
   };
 
   const announce = (state: UploadState): void => {
-    if (state.status === "succeeded") observable.emit("upload:succeeded", { uploadId: state.id });
+    if (state.status === "succeeded") observable.emit("upload:succeeded", { id: state.id });
     else if (state.status === "failed" && state.error !== null)
-      observable.emit("upload:failed", { uploadId: state.id, error: state.error });
-    else if (state.status === "cancelled") observable.emit("upload:cancelled", { uploadId: state.id });
-    else if (state.status === "paused") observable.emit("upload:paused", { uploadId: state.id });
+      observable.emit("upload:failed", { id: state.id, error: state.error });
+    else if (state.status === "cancelled") observable.emit("upload:cancelled", { id: state.id });
+    else if (state.status === "paused") observable.emit("upload:paused", { id: state.id });
   };
 
   const drive = (state: UploadState): Promise<void> => {
@@ -294,8 +301,8 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     return snapshot;
   };
 
-  const targetsFor = (uploadId?: string): UploadState[] =>
-    uploadId === undefined ? states : states.filter((state) => state.id === uploadId);
+  const targetsFor = (id?: string): UploadState[] =>
+    id === undefined ? states : states.filter((state) => state.id === id);
 
   const start = async (): Promise<BatchSnapshot> => {
     await Promise.all(states.map(drive));
@@ -329,13 +336,13 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     await Promise.all(targets.map((state) => running.get(state.id) ?? Promise.resolve()));
   };
 
-  const pause = async (uploadId?: string): Promise<BatchSnapshot> => {
-    await halt(targetsFor(uploadId), "pause");
+  const pause = async (id?: string): Promise<BatchSnapshot> => {
+    await halt(targetsFor(id), "pause");
     return observable.read();
   };
 
-  const cancel = async (uploadId?: string): Promise<BatchSnapshot> => {
-    const targets = targetsFor(uploadId);
+  const cancel = async (id?: string): Promise<BatchSnapshot> => {
+    const targets = targetsFor(id);
     await halt(targets, "cancel");
 
     for (const state of targets) {
@@ -356,13 +363,13 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
     return observable.read();
   };
 
-  const resume = async (uploadId?: string): Promise<BatchSnapshot> => {
-    const targets = targetsFor(uploadId);
+  const resume = async (id?: string): Promise<BatchSnapshot> => {
+    const targets = targetsFor(id);
 
-    if (uploadId !== undefined) {
+    if (id !== undefined) {
       const state = targets[0];
       if (state === undefined) {
-        throw uploadError("NOT_RESUMABLE", `No Upload with id ${uploadId}.`);
+        throw uploadError("NOT_RESUMABLE", `No Upload with id ${id}.`);
       }
       if (state.status === "cancelled") {
         throw uploadError(
@@ -411,7 +418,7 @@ const buildBatch = (options: BatchInternalOptions): BatchController => {
  *
  * Internal, and deliberately a different symbol from `createBatch`: typing the
  * public constructor with the internal options put `UploadState` — `intent`,
- * `controller`, `version` — into the shipped declarations as a reachable public
+ * `controller`, `intent` — into the shipped declarations as a reachable public
  * type, which `index.ts` promises to keep working and has no intention of.
  */
 export const createSeededBatch = (options: BatchInternalOptions): BatchController =>

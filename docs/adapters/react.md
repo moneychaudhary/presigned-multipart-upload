@@ -71,14 +71,18 @@ fires them again on every subsequent render.
 ```tsx
 import { useUploadEvent } from "presigned-multipart-upload/react";
 
-useUploadEvent(batch, "upload:succeeded", ({ uploadId }) => {
-  toast.success(`${uploadId} finished`);
+useUploadEvent(batch, "upload:succeeded", ({ id }) => {
+  toast.success(`${id} finished`);
 });
 
 useUploadEvent(batch, "part:retrying", ({ partNumber, delayMs }) => {
   console.log(`part ${partNumber} retrying in ${delayMs}ms`);
 });
 ```
+
+Every event payload carries `id` — the library's own identifier for the upload,
+the one `resume`, `pause` and `cancel` take. It is *not* `uploadId`, which on a
+snapshot means the storage provider's multipart id.
 
 The handler is held in a ref, so passing an inline arrow — which everyone does —
 does not tear the subscription down and rebuild it on every render.

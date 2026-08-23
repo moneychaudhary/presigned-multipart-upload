@@ -1,10 +1,10 @@
+import {
+  abortFailure,
+  httpFailure,
+  networkFailure,
+  timeoutFailure,
+} from "./failures.js";
 import type { Platform, SendPartArgs, SendPartResult } from "../types.js";
-
-const abortError = (message: string): Error =>
-  Object.assign(new Error(message), { name: "AbortError" });
-
-const namedError = (name: string, message: string, extra: object = {}): Error =>
-  Object.assign(new Error(message), { name, ...extra });
 
 /**
  * Send one Part with XMLHttpRequest.
@@ -24,7 +24,7 @@ const sendPart = ({
 }: SendPartArgs): Promise<SendPartResult> =>
   new Promise((resolve, reject) => {
     if (signal.aborted) {
-      reject(abortError(`Part ${partNumber} aborted before it started`));
+      reject(abortFailure(`Part ${partNumber} aborted before it started`));
       return;
     }
 
@@ -44,11 +44,7 @@ const sendPart = ({
     xhr.onload = (): void => {
       cleanup();
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(
-          namedError("HttpError", `Part ${partNumber} failed with status ${xhr.status}`, {
-            status: xhr.status,
-          }),
-        );
+        reject(httpFailure(partNumber, xhr.status));
         return;
       }
       // S3 quotes the ETag, and the quotes are part of the value that
@@ -58,17 +54,17 @@ const sendPart = ({
 
     xhr.onerror = (): void => {
       cleanup();
-      reject(namedError("NetworkError", `Part ${partNumber} never reached the network`));
+      reject(networkFailure(partNumber));
     };
 
     xhr.ontimeout = (): void => {
       cleanup();
-      reject(namedError("TimeoutError", `Part ${partNumber} timed out after ${timeoutMs}ms`));
+      reject(timeoutFailure(partNumber, timeoutMs));
     };
 
     xhr.onabort = (): void => {
       cleanup();
-      reject(abortError(`Part ${partNumber} aborted`));
+      reject(abortFailure(`Part ${partNumber} aborted`));
     };
 
     xhr.send(body);

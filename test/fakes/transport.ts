@@ -6,6 +6,11 @@ import type {
   Transport,
 } from "../../src/index.js";
 
+/**
+ * The storage provider's multipart id, deliberately prefixed so it cannot be
+ * mistaken for the library's own Upload id in an assertion. The two used to be
+ * `upload-0` and `upload-1`, adjacent and off by one.
+ */
 export interface OpenRecord {
   fileName: string;
   partCount: number;
@@ -91,7 +96,7 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
     if (options.signsParts) {
       return {
         key: ctx.resumeFrom?.key ?? `uploads/${file.name}`,
-        uploadId: ctx.resumeFrom?.uploadId ?? `upload-${index}`,
+        uploadId: ctx.resumeFrom?.uploadId ?? `s3-upload-${index}`,
       };
     }
 
@@ -100,7 +105,7 @@ export const createFakeTransport = (options: FakeTransportOptions = {}): FakeTra
 
     return {
       key: ctx.resumeFrom?.key ?? `uploads/${file.name}`,
-      uploadId: ctx.resumeFrom?.uploadId ?? `upload-${index}`,
+      uploadId: ctx.resumeFrom?.uploadId ?? `s3-upload-${index}`,
       urls: state.lastUrls,
     };
   };

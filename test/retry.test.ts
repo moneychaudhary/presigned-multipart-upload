@@ -68,13 +68,35 @@ describe("Retrying a transient failure", () => {
 
 describe("the backoff ladder", () => {
   it("doubles the window each Attempt", async () => {
-    const { platform } = await run(
-      { script: () => ({ kind: "network" }), randomValues: [1] },
-      { maxRetries: 3, retryBaseMs: 100, retryMaxMs: 10_000, concurrency: 1 },
-    );
+    const platform = createFakePlatform({
+      script: () => ({ kind: "network" }),
+      randomValues: [1],
+    });
+    const batch = createBatch({
+      files: [makeFile(25 * KB)],
+      transport: createFakeTransport(),
+      platform,
+      partSize: 10 * KB,
+      provider: { minPartSize: 1 },
+      maxRetries: 3,
+      retryBaseMs: 100,
+      retryMaxMs: 10_000,
+      concurrency: 1,
+    });
+
+    // Observed per Part rather than off the Platform's sleep log. A Part waiting
+    // out its backoff releases its Connection Budget slot, so a sibling's first
+    // Retry interleaves with this one's second — the ladder belongs to the Part,
+    // not to the Batch.
+    const delays: number[] = [];
+    batch.on("part:retrying", ({ partNumber, delayMs }) => {
+      if (partNumber === 1) delays.push(delayMs);
+    });
+
+    await batch.start();
 
     // Full jitter at random()===1 yields the top of each window: 100, 200, 400.
-    expect(platform.state.sleeps.slice(0, 3)).toEqual([100, 200, 400]);
+    expect(delays).toEqual([100, 200, 400]);
   });
 
   it("never exceeds the ceiling", async () => {
@@ -115,7 +137,7 @@ describe("the backoff ladder", () => {
     await batch.start();
 
     expect(retrying).toHaveBeenCalledWith({
-      uploadId: "upload-1",
+      id: "upload-1",
       partNumber: 1,
       attempt: 1,
       delayMs: 250,
@@ -185,7 +207,17 @@ describe("classifying failures", () => {
 
   it("passes a per-Attempt timeout through to the Platform", async () => {
     const { platform } = await run({}, { partTimeoutMs: 9000 });
+
     expect(platform.state.calls).not.toHaveLength(0);
+    expect(platform.state.calls.every((call) => call.timeoutMs === 9000)).toBe(true);
+  });
+
+  it("sends no deadline at all when none was asked for", async () => {
+    const { platform } = await run({});
+
+    // 0 is the documented "disabled", and it must reach the Platform as 0
+    // rather than as some default the Core invented.
+    expect(platform.state.calls.every((call) => call.timeoutMs === 0)).toBe(true);
   });
 });
 

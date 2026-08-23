@@ -69,7 +69,7 @@ and that is what fails the upload.
 ## Watching it happen
 
 ```ts
-batch.on("part:retrying", ({ uploadId, partNumber, attempt, delayMs }) => {
+batch.on("part:retrying", ({ id, partNumber, attempt, delayMs }) => {
   console.log(`part ${partNumber} attempt ${attempt}, waiting ${delayMs}ms`);
 });
 ```

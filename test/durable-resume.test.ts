@@ -71,7 +71,7 @@ describe("keeping an Upload Record", () => {
     const record = await store.get("upload-1");
     expect(record).toMatchObject({
       key: "uploads/clip.mov",
-      uploadId: "upload-0",
+      uploadId: "s3-upload-0",
       partSize: 10 * KB,
       partCount: 5,
     });
@@ -214,7 +214,7 @@ describe("resuming across a page session, via a File Handle", () => {
     expect(snapshot.uploads[0]!.status).toBe("succeeded");
     expect(transport.state.opens[0]!.resumeFrom).toEqual({
       key: "uploads/clip.mov",
-      uploadId: "upload-0",
+      uploadId: "s3-upload-0",
     });
   });
 

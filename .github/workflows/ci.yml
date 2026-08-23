@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Typecheck, build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    name: Against a real S3 endpoint
+    runs-on: ubuntu-latest
+
+    # The unit suite runs entirely against fakes. This is the only place ETag
+    # quoting, Part ordering and the finalise payload meet a real provider — it
+    # self-skips when nothing answers, so without a server here it silently
+    # proved nothing.
+    services:
+      minio:
+        image: bitnami/minio:latest
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The suite skips itself when MinIO is unreachable, which would turn a
+      # broken service container into a green run. Fail here instead.
+      - name: Confirm MinIO is answering
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
+              echo "MinIO is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO never became reachable; the integration suite would have skipped itself."
+          exit 1
+
+      - run: npm run test:integration
+        env:
+          MINIO_ENDPOINT: http://127.0.0.1:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin

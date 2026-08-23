@@ -186,7 +186,7 @@ describe("cancelling", () => {
     await run;
 
     expect(snapshot.status).toBe("cancelled");
-    expect(cancelled).toHaveBeenCalledWith({ uploadId: "upload-1" });
+    expect(cancelled).toHaveBeenCalledWith({ id: "upload-1" });
   });
 
   it("survives a Transport whose teardown itself fails", async () => {
