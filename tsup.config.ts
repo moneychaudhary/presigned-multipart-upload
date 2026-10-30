@@ -6,6 +6,7 @@ export default defineConfig({
     react: "src/react.ts",
     angular: "src/angular.ts",
     advanced: "src/advanced.ts",
+    server: "src/server.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
@@ -21,5 +22,5 @@ export default defineConfig({
   splitting: true,
   treeshake: true,
   // Frameworks are optional peers; importing the Core must never pull one in.
-  external: ["react", "@angular/core", "rxjs"],
+  external: ["react", "@angular/core", "rxjs", /^@aws-sdk\//, /^node:/],
 });
