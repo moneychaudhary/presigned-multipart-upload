@@ -1,6 +1,6 @@
 {
   "name": "presigned-multipart-upload",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multipart uploads to S3 presigned URLs for React and Angular, with retry, pause, resume, cancel and checksums.",
   "license": "MIT",
   "engines": {
@@ -85,7 +85,8 @@
         "types": "./dist/server.d.cts",
         "default": "./dist/server.cjs"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

@@ -72,6 +72,10 @@ try {
     return "";
   });
   check("require from CJS", () => run("node", ["cjs.cjs"], dir));
+  // Bundlers and other tooling read a package's own metadata by this path.
+  check("package.json is reachable", () =>
+    run("node", ["-e", 'require("presigned-multipart-upload/package.json")'], dir),
+  );
   check("the advanced entry resolves", () =>
     run(
       "node",
