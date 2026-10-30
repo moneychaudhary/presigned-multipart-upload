@@ -1,0 +1,21 @@
+# S3 on LocalStack, with the bucket and its CORS rule created on start.
+#
+# 4.14.0 is the last LocalStack image that runs without an account: from March
+# 2026 the current image requires LOCALSTACK_AUTH_TOKEN. To use it, export the
+# token and LOCALSTACK_IMAGE=localstack/localstack:latest before `npm run aws:up`.
+services:
+  localstack:
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:4.14.0}
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+    volumes:
+      - ./localstack/init-s3.sh:/etc/localstack/init/ready.d/init-s3.sh:ro
+    healthcheck:
+      # Healthy only once the init script has made the bucket.
+      test: ["CMD", "sh", "-c", "awslocal s3api head-bucket --bucket pmu-playground"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
