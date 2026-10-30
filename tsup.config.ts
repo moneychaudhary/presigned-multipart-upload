@@ -3,6 +3,8 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    react: "src/react.ts",
+    angular: "src/angular.ts",
     advanced: "src/advanced.ts",
   },
   format: ["esm", "cjs"],

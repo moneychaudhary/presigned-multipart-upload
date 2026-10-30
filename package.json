@@ -21,6 +21,12 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
+      "react": [
+        "./dist/react.d.ts"
+      ],
+      "angular": [
+        "./dist/angular.d.ts"
+      ],
       "advanced": [
         "./dist/advanced.d.ts"
       ]
@@ -35,6 +41,26 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./angular": {
+      "import": {
+        "types": "./dist/angular.d.ts",
+        "default": "./dist/angular.js"
+      },
+      "require": {
+        "types": "./dist/angular.d.cts",
+        "default": "./dist/angular.cjs"
       }
     },
     "./advanced": {
@@ -83,6 +109,22 @@
     "s3",
     "upload"
   ],
+  "peerDependencies": {
+    "@angular/core": ">=17",
+    "react": ">=18",
+    "rxjs": ">=7"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@angular/core": "^21.2.21",
     "@arethetypeswrong/cli": "^0.18.5",
