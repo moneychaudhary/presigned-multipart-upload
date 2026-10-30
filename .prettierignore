@@ -1,0 +1,8 @@
+dist/
+node_modules/
+package-lock.json
+playground/package-lock.json
+playground/screenshots/
+playground/test-results/
+playground/playwright-report/
+CHANGELOG.md
