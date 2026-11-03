@@ -87,4 +87,40 @@ describe("the Vue adapter", () => {
     expect(u.snapshot.value).toBe(before);
     expect(controller.getSnapshot().status).toBe("succeeded");
   });
+
+  it("lets dispose run before the scope stops", () => {
+    const scope = effectScope();
+    const u = scope.run(() => useUploader(build()))!;
+
+    u.dispose();
+
+    expect(() => scope.stop()).not.toThrow();
+  });
+
+  it("builds a new Uploader from options", async () => {
+    const scope = effectScope();
+    const u = scope.run(() =>
+      useUploader({
+        files: [makeFile(25 * KB)],
+        transport: createFakeTransport(),
+        platform: createFakePlatform(),
+        partSize: 10 * KB,
+        limits: { minPartSize: 1 },
+      }),
+    )!;
+
+    expect(u.snapshot.value).toBe(u.uploader.getSnapshot());
+    await u.start();
+    expect(u.snapshot.value.status).toBe("succeeded");
+    scope.stop();
+  });
+
+  it("uses an Uploader passed in as it is", () => {
+    const controller = build();
+    const scope = effectScope();
+    const u = scope.run(() => useUploader(controller))!;
+
+    expect(u.uploader).toBe(controller);
+    scope.stop();
+  });
 });
