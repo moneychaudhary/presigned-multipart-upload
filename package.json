@@ -27,6 +27,9 @@
       "angular": [
         "./dist/angular.d.ts"
       ],
+      "vue": [
+        "./dist/vue.d.ts"
+      ],
       "advanced": [
         "./dist/advanced.d.ts"
       ],
@@ -64,6 +67,16 @@
       "require": {
         "types": "./dist/angular.d.cts",
         "default": "./dist/angular.cjs"
+      }
+    },
+    "./vue": {
+      "import": {
+        "types": "./dist/vue.d.ts",
+        "default": "./dist/vue.js"
+      },
+      "require": {
+        "types": "./dist/vue.d.cts",
+        "default": "./dist/vue.cjs"
       }
     },
     "./advanced": {

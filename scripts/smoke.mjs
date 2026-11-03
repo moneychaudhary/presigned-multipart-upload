@@ -34,7 +34,8 @@ try {
 
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "smoke", private: true }));
   console.log(`installing ${tarball} into a clean project…`);
-  run("npm", ["install", `./${tarball}`, "--silent", "--no-audit", "--no-fund"], dir);
+  // Vue is an external peer, so the Vue entry cannot load without it beside the tarball.
+  run("npm", ["install", `./${tarball}`, "vue", "--silent", "--no-audit", "--no-fund"], dir);
 
   writeFileSync(
     join(dir, "esm.mjs"),
@@ -87,6 +88,21 @@ try {
       dir,
     ),
   );
+  check("the Vue entry resolves in ESM and CJS", () => {
+    const names =
+      "for (const name of ['useUploader', 'useUploaderEvent']) if (typeof m[name] !== 'function') throw new Error(name + ' missing');";
+    run(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        `import("presigned-multipart-upload/vue").then((m) => { ${names} });`,
+      ],
+      dir,
+    );
+    run("node", ["-e", `const m = require("presigned-multipart-upload/vue"); ${names}`], dir);
+    return "";
+  });
   // What a browser downloads: the main entry and the chunks it shares with the
   // adapters, gzipped. A budget, so growth is a decision rather than a drift.
   check("the browser bundle stays under budget", () => {
