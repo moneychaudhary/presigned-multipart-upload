@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { effectScope } from "vue";
-import { describe, expect, it } from "vitest";
+import { computed, effectScope, isReadonly, isRef, toRaw } from "vue";
+import { describe, expect, it, vi } from "vitest";
 
 import { createUploader } from "../src/index.js";
 import { useUploader } from "../src/vue.js";
@@ -26,6 +26,39 @@ describe("the Vue adapter", () => {
 
     expect(u.snapshot.value).toBe(controller.getSnapshot());
     expect(u.snapshot.value.status).toBe("idle");
+    scope.stop();
+  });
+
+  it("updates as the Upload moves, and computed values see it", async () => {
+    const controller = build();
+    const scope = effectScope();
+    const { u, status } = scope.run(() => {
+      const u = useUploader(controller);
+      return { u, status: computed(() => u.snapshot.value.status) };
+    })!;
+    expect(status.value).toBe("idle");
+
+    await u.start();
+
+    expect(u.snapshot.value.status).toBe("succeeded");
+    expect(u.snapshot.value).toBe(controller.getSnapshot());
+    expect(status.value).toBe("succeeded");
+    scope.stop();
+  });
+
+  it("is a read-only ref holding the Core's own object", () => {
+    const controller = build();
+    const scope = effectScope();
+    const u = scope.run(() => useUploader(controller))!;
+    const v = u.snapshot.value;
+
+    expect(isReadonly(u.snapshot)).toBe(true);
+    expect(isRef(u.snapshot)).toBe(true);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    (u.snapshot as { value: unknown }).value = build().getSnapshot();
+    warn.mockRestore();
+    expect(u.snapshot.value).toBe(v);
+    expect(toRaw(v)).toBe(v);
     scope.stop();
   });
 });
