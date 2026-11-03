@@ -232,4 +232,17 @@ describe("useUploaderEvent", () => {
     expect(spy).toHaveBeenCalledWith({ id: controller.getSnapshot().upload!.id });
     scope.stop();
   });
+
+  it("stops firing once off is called", async () => {
+    const controller = build();
+    const spy = vi.fn();
+    const scope = effectScope();
+    const off = scope.run(() => useUploaderEvent(controller, "upload:succeeded", spy))!;
+
+    off();
+    await controller.start();
+
+    expect(spy).not.toHaveBeenCalled();
+    scope.stop();
+  });
 });
