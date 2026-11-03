@@ -124,3 +124,39 @@ describe("the Vue adapter", () => {
     scope.stop();
   });
 });
+
+describe("the Vue adapter outside an effect scope", () => {
+  it("updates during an upload", async () => {
+    const controller = build();
+    const u = useUploader(controller);
+
+    await u.start();
+
+    expect(u.snapshot.value.status).toBe("succeeded");
+    u.dispose();
+  });
+
+  it("is not stopped by an unrelated scope", async () => {
+    const controller = build();
+    const u = useUploader(controller);
+    const other = effectScope();
+    other.run(() => computed(() => 1).value);
+    other.stop();
+
+    await u.start();
+
+    expect(u.snapshot.value.status).toBe("succeeded");
+    u.dispose();
+  });
+
+  it("stops only when disposed", async () => {
+    const controller = build();
+    const u = useUploader(controller);
+
+    u.dispose();
+    await u.start();
+
+    expect(u.snapshot.value.status).toBe("idle");
+    expect(controller.getSnapshot().status).toBe("succeeded");
+  });
+});
