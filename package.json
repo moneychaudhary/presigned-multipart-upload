@@ -1,7 +1,7 @@
 {
   "name": "presigned-multipart-upload",
   "version": "0.1.1",
-  "description": "Multipart uploads to S3 presigned URLs for React and Angular, with retry, pause, resume, cancel and checksums.",
+  "description": "Multipart uploads to S3 presigned URLs for React, Vue and Angular, with retry, pause, resume, cancel and checksums.",
   "license": "MIT",
   "engines": {
     "node": ">=20"
@@ -134,7 +134,8 @@
     "resumable",
     "retry",
     "s3",
-    "upload"
+    "upload",
+    "vue"
   ],
   "peerDependencies": {
     "@angular/core": ">=17",
