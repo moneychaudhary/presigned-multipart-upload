@@ -1,18 +1,15 @@
 // Experimental Vue binding, published at `presigned-multipart-upload/vue-experimental`.
 import { getCurrentScope, onScopeDispose, shallowReadonly, shallowRef, type ShallowRef } from "vue";
 
+import { actionsOf, type UploaderActions } from "./bindings.js";
 import { toUploader, type UploaderSource } from "./uploader.js";
 import type { EventName, Uploader, UploaderEvents, UploaderSnapshot } from "./types.js";
 
-export interface VueUploader {
+export interface VueUploader extends UploaderActions {
   /** Live state for templates and computed values; read-only, holds the Core's own object. */
   snapshot: Readonly<ShallowRef<UploaderSnapshot>>;
   /** The Uploader itself, for `on` and anything else off the core surface. */
   uploader: Uploader;
-  start: Uploader["start"];
-  pause: Uploader["pause"];
-  resume: Uploader["resume"];
-  cancel: Uploader["cancel"];
   /** Release the subscription; automatic inside a scope, and it never cancels the upload. */
   dispose: () => void;
 }
@@ -33,10 +30,7 @@ export const useUploader = (source: UploaderSource): VueUploader => {
   return {
     snapshot: shallowReadonly(state),
     uploader: controller,
-    start: controller.start,
-    pause: controller.pause,
-    resume: controller.resume,
-    cancel: controller.cancel,
+    ...actionsOf(controller),
     dispose,
   };
 };

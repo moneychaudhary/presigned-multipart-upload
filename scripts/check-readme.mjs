@@ -35,23 +35,26 @@ void [createUploader, httpTransport, listResumable, resumeUploader, createIndexe
   currentUserId, s3, app];
 `;
 
-// React's useUploader names; a block gets these unless it imports another binding.
+// Each binding's preamble, keyed by the package subpath a block imports it from.
+const bindingPreambles = [
+  [
+    "presigned-multipart-upload/vue-experimental",
+    `import { useUploader, useUploaderEvent } from "${src}/vue.js";
+import { onUnmounted, onScopeDispose } from "vue";
+void [useUploader, useUploaderEvent, onUnmounted, onScopeDispose];
+`,
+  ],
+];
+
+// React's names, which a block gets unless it imports another binding.
 const reactBindings = `import { useUploader, useUploaderEvent } from "${src}/react.js";
 void [useUploader, useUploaderEvent];
 `;
 
-// Vue's names, under the same identifiers a Vue user writes.
-const vueBindings = `import { useUploader, useUploaderEvent } from "${src}/vue.js";
-import { onUnmounted, onScopeDispose } from "vue";
-void [useUploader, useUploaderEvent, onUnmounted, onScopeDispose];
-`;
-
 // The preamble for one block, picked from the binding it imports.
 const preambleFor = (code) => {
-  const bindings = code.includes('from "presigned-multipart-upload/vue-experimental"')
-    ? vueBindings
-    : reactBindings;
-  return `${common}${bindings}export async function snippet() {
+  const match = bindingPreambles.find(([subpath]) => code.includes(`from "${subpath}"`));
+  return `${common}${match ? match[1] : reactBindings}export async function snippet() {
 `;
 };
 

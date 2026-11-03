@@ -1,20 +1,17 @@
 import { signal, type Signal } from "@angular/core";
 import { Observable } from "rxjs";
 
+import { actionsOf, type UploaderActions } from "./bindings.js";
 import { toUploader, type UploaderSource } from "./uploader.js";
 import type { Uploader, UploaderSnapshot } from "./types.js";
 
-export interface AngularUploader {
+export interface AngularUploader extends UploaderActions {
   /** Live state, for templates and computed signals. */
   snapshot: Signal<UploaderSnapshot>;
   /** The same state as a stream, for codebases built on RxJS. */
   snapshot$: Observable<UploaderSnapshot>;
   /** The Uploader itself, for `on` and anything else off the core surface. */
   uploader: Uploader;
-  start: Uploader["start"];
-  pause: Uploader["pause"];
-  resume: Uploader["resume"];
-  cancel: Uploader["cancel"];
   /** Release the subscription. Call from the service's ngOnDestroy. */
   dispose: () => void;
 }
@@ -46,10 +43,7 @@ export const createAngularUploader = (source: UploaderSource): AngularUploader =
     snapshot: state.asReadonly(),
     snapshot$,
     uploader: controller,
-    start: controller.start,
-    pause: controller.pause,
-    resume: controller.resume,
-    cancel: controller.cancel,
+    ...actionsOf(controller),
     dispose: unsubscribe,
   };
 };
