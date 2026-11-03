@@ -147,7 +147,7 @@ Full example: [`playground/src/angular`](https://github.com/moneychaudhary/presi
 ```ts
 import { onUnmounted } from "vue";
 import { httpTransport } from "presigned-multipart-upload";
-import { useUploader, useUploaderEvent } from "presigned-multipart-upload/vue";
+import { useUploader, useUploaderEvent } from "presigned-multipart-upload/vue-experimental";
 
 // In <script setup lang="ts"> or setup()
 const { snapshot, uploader, start, pause, resume, cancel } = useUploader({

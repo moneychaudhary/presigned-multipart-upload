@@ -48,7 +48,7 @@ void [useUploader, useUploaderEvent, onUnmounted, onScopeDispose];
 
 // The preamble for one block, picked from the binding it imports.
 const preambleFor = (code) => {
-  const bindings = code.includes('from "presigned-multipart-upload/vue"')
+  const bindings = code.includes('from "presigned-multipart-upload/vue-experimental"')
     ? vueBindings
     : reactBindings;
   return `${common}${bindings}export async function snippet() {
