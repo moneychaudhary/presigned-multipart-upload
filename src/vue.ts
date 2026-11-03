@@ -44,4 +44,8 @@ export const useUploaderEvent = <T extends EventName>(
   controller: Uploader,
   type: T,
   handler: (payload: UploaderEvents[T]) => void,
-): (() => void) => controller.on(type, handler);
+): (() => void) => {
+  const off = controller.on(type, handler);
+  bindToScope(off);
+  return off;
+};
