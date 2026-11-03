@@ -61,4 +61,17 @@ describe("the Vue adapter", () => {
     expect(toRaw(v)).toBe(v);
     scope.stop();
   });
+
+  it("stops updating after dispose, and the upload still finishes", async () => {
+    const controller = build();
+    const scope = effectScope();
+    const u = scope.run(() => useUploader(controller))!;
+
+    u.dispose();
+    await u.start();
+
+    expect(u.snapshot.value.status).toBe("idle");
+    expect(controller.getSnapshot().status).toBe("succeeded");
+    scope.stop();
+  });
 });
