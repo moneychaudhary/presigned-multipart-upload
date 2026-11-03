@@ -13,7 +13,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { createUploader } from "../src/index.js";
-import { useUploader, type VueUploader } from "../src/vue.js";
+import { useUploader, useUploaderEvent, type VueUploader } from "../src/vue.js";
 import type { Uploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
@@ -216,5 +216,20 @@ describe("the Vue adapter in a mounted component", () => {
     expect(renders.mock.calls.length).toBe(before);
     expect(bound.snapshot.value.status).toBe("idle");
     expect(controller.getSnapshot().status).toBe("succeeded");
+  });
+});
+
+describe("useUploaderEvent", () => {
+  it("fires its handler with the event's payload inside a scope", async () => {
+    const controller = build();
+    const spy = vi.fn();
+    const scope = effectScope();
+    scope.run(() => useUploaderEvent(controller, "upload:succeeded", spy));
+
+    await controller.start();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({ id: controller.getSnapshot().upload!.id });
+    scope.stop();
   });
 });

@@ -1,7 +1,7 @@
 import { getCurrentScope, onScopeDispose, shallowReadonly, shallowRef, type ShallowRef } from "vue";
 
 import { toUploader, type UploaderSource } from "./uploader.js";
-import type { Uploader, UploaderSnapshot } from "./types.js";
+import type { EventName, Uploader, UploaderEvents, UploaderSnapshot } from "./types.js";
 
 export interface VueUploader {
   /** Live state for templates and computed values; read-only, holds the Core's own object. */
@@ -39,3 +39,9 @@ export const useUploader = (source: UploaderSource): VueUploader => {
     dispose,
   };
 };
+
+export const useUploaderEvent = <T extends EventName>(
+  controller: Uploader,
+  type: T,
+  handler: (payload: UploaderEvents[T]) => void,
+): (() => void) => controller.on(type, handler);
