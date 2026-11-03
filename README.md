@@ -5,10 +5,10 @@
 [![types](https://img.shields.io/npm/types/presigned-multipart-upload)](https://www.npmjs.com/package/presigned-multipart-upload)
 [![license](https://img.shields.io/npm/l/presigned-multipart-upload)](./LICENSE)
 
-Upload files of any size from React, Vue or Angular straight to S3, through presigned
-URLs. Parts upload in parallel and retry on their own; uploads pause, resume —
-even after a page reload — and cancel. Your server mints the URLs, with a
-handler this package provides.
+Upload files of any size from React, Angular or Vue (experimental) straight to S3,
+through presigned URLs. Parts upload in parallel and retry on their own; uploads
+pause, resume — even after a page reload — and cancel. Your server mints the URLs,
+with a handler this package provides.
 
 - **No credentials in the browser.** It only PUTs to URLs your server signed.
 - **Survives reloads.** What landed is remembered; only the rest is sent.
@@ -142,7 +142,10 @@ Signals work zoned and zoneless; `snapshot$` is the same state for RxJS code.
 
 Full example: [`playground/src/angular`](https://github.com/moneychaudhary/presigned-multipart-upload/tree/main/playground/src/angular).
 
-### 3. Or in Vue
+### 3. Or in Vue (experimental)
+
+The Vue binding is experimental: import it from `presigned-multipart-upload/vue-experimental`.
+Its API may change before it moves to `presigned-multipart-upload/vue`.
 
 ```ts
 import { onUnmounted } from "vue";
@@ -242,7 +245,7 @@ refused, not stored. The server handler signs them in; nothing else changes.
 
 ## Options
 
-**Uploader** — `useUploader` (React, Vue), `createAngularUploader`, `createUploader`:
+**Uploader** — `useUploader` (React, Vue experimental), `createAngularUploader`, `createUploader`:
 
 | Option        | Default   |                                                                 |
 | ------------- | --------- | --------------------------------------------------------------- |

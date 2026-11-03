@@ -1,3 +1,4 @@
+// Experimental Vue binding, published at `presigned-multipart-upload/vue-experimental`.
 import { getCurrentScope, onScopeDispose, shallowReadonly, shallowRef, type ShallowRef } from "vue";
 
 import { toUploader, type UploaderSource } from "./uploader.js";
