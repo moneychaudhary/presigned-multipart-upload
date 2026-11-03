@@ -4,6 +4,7 @@ import {
   createApp,
   defineComponent,
   effectScope,
+  type EffectScope,
   h,
   isReadonly,
   isRef,
@@ -14,26 +15,38 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createUploader } from "../src/index.js";
 import { useUploader, useUploaderEvent, type VueUploader } from "../src/vue.js";
-import type { Uploader } from "../src/index.js";
+import type { Uploader, UploaderOptions } from "../src/index.js";
 import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
 
-const build = (script?: Script): Uploader =>
-  createUploader({
-    files: [makeFile(25 * KB)],
-    transport: createFakeTransport(),
-    platform: createFakePlatform(script ? { script } : {}),
-    partSize: 10 * KB,
-    limits: { minPartSize: 1 },
-  });
+// Options for a small three-part upload over the fakes.
+const options = (script?: Script): UploaderOptions => ({
+  files: [makeFile(25 * KB)],
+  transport: createFakeTransport(),
+  platform: createFakePlatform(script ? { script } : {}),
+  partSize: 10 * KB,
+  limits: { minPartSize: 1 },
+});
+
+const build = (script?: Script): Uploader => createUploader(options(script));
+
+// Run setup code inside a fresh effect scope, as setup() would.
+const inScope = <T>(setup: () => T): { scope: EffectScope; value: T } => {
+  const scope = effectScope();
+  return { scope, value: scope.run(setup)! };
+};
+
+// Start and stop a scope that has nothing to do with the code under test.
+const stopUnrelatedScope = (): void => {
+  inScope(() => computed(() => 1).value).scope.stop();
+};
 
 describe("the Vue adapter", () => {
   it("holds the current snapshot as soon as it returns", () => {
     const controller = build();
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(controller))!;
+    const { scope, value: u } = inScope(() => useUploader(controller));
 
     expect(u.snapshot.value).toBe(controller.getSnapshot());
     expect(u.snapshot.value.status).toBe("idle");
@@ -42,11 +55,13 @@ describe("the Vue adapter", () => {
 
   it("updates as the Upload moves, and computed values see it", async () => {
     const controller = build();
-    const scope = effectScope();
-    const { u, status } = scope.run(() => {
+    const {
+      scope,
+      value: { u, status },
+    } = inScope(() => {
       const u = useUploader(controller);
       return { u, status: computed(() => u.snapshot.value.status) };
-    })!;
+    });
     expect(status.value).toBe("idle");
 
     await u.start();
@@ -59,8 +74,7 @@ describe("the Vue adapter", () => {
 
   it("is a read-only ref holding the Core's own object", () => {
     const controller = build();
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(controller))!;
+    const { scope, value: u } = inScope(() => useUploader(controller));
     const v = u.snapshot.value;
 
     expect(isReadonly(u.snapshot)).toBe(true);
@@ -75,8 +89,7 @@ describe("the Vue adapter", () => {
 
   it("stops updating after dispose, and the upload still finishes", async () => {
     const controller = build();
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(controller))!;
+    const { scope, value: u } = inScope(() => useUploader(controller));
 
     u.dispose();
     await u.start();
@@ -88,8 +101,7 @@ describe("the Vue adapter", () => {
 
   it("stops updating when its effect scope stops", async () => {
     const controller = build();
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(controller))!;
+    const { scope, value: u } = inScope(() => useUploader(controller));
     const before = u.snapshot.value;
 
     scope.stop();
@@ -100,8 +112,7 @@ describe("the Vue adapter", () => {
   });
 
   it("lets dispose run before the scope stops", () => {
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(build()))!;
+    const { scope, value: u } = inScope(() => useUploader(build()));
 
     u.dispose();
 
@@ -109,16 +120,7 @@ describe("the Vue adapter", () => {
   });
 
   it("builds a new Uploader from options", async () => {
-    const scope = effectScope();
-    const u = scope.run(() =>
-      useUploader({
-        files: [makeFile(25 * KB)],
-        transport: createFakeTransport(),
-        platform: createFakePlatform(),
-        partSize: 10 * KB,
-        limits: { minPartSize: 1 },
-      }),
-    )!;
+    const { scope, value: u } = inScope(() => useUploader(options()));
 
     expect(u.snapshot.value).toBe(u.uploader.getSnapshot());
     await u.start();
@@ -128,8 +130,7 @@ describe("the Vue adapter", () => {
 
   it("uses an Uploader passed in as it is", () => {
     const controller = build();
-    const scope = effectScope();
-    const u = scope.run(() => useUploader(controller))!;
+    const { scope, value: u } = inScope(() => useUploader(controller));
 
     expect(u.uploader).toBe(controller);
     scope.stop();
@@ -150,9 +151,7 @@ describe("the Vue adapter outside an effect scope", () => {
   it("is not stopped by an unrelated scope", async () => {
     const controller = build();
     const u = useUploader(controller);
-    const other = effectScope();
-    other.run(() => computed(() => 1).value);
-    other.stop();
+    stopUnrelatedScope();
 
     await u.start();
 
@@ -224,8 +223,7 @@ describe("useUploaderEvent", () => {
   it("fires its handler with the event's payload inside a scope", async () => {
     const controller = build();
     const spy = vi.fn();
-    const scope = effectScope();
-    scope.run(() => useUploaderEvent(controller, "upload:succeeded", spy));
+    const { scope } = inScope(() => useUploaderEvent(controller, "upload:succeeded", spy));
 
     await controller.start();
 
@@ -236,8 +234,7 @@ describe("useUploaderEvent", () => {
 
   it("types the handler's payload by the event name", () => {
     const controller = build();
-    const scope = effectScope();
-    scope.run(() => {
+    const { scope } = inScope(() => {
       useUploaderEvent(controller, "upload:failed", ({ error }) => error.code);
       // @ts-expect-error upload:succeeded carries no error
       useUploaderEvent(controller, "upload:succeeded", ({ error }) => error);
@@ -248,8 +245,9 @@ describe("useUploaderEvent", () => {
   it("stops firing once off is called", async () => {
     const controller = build();
     const spy = vi.fn();
-    const scope = effectScope();
-    const off = scope.run(() => useUploaderEvent(controller, "upload:succeeded", spy))!;
+    const { scope, value: off } = inScope(() =>
+      useUploaderEvent(controller, "upload:succeeded", spy),
+    );
 
     off();
     await controller.start();
@@ -261,8 +259,7 @@ describe("useUploaderEvent", () => {
   it("stops firing when its effect scope stops", async () => {
     const controller = build();
     const spy = vi.fn();
-    const scope = effectScope();
-    scope.run(() => useUploaderEvent(controller, "upload:succeeded", spy));
+    const { scope } = inScope(() => useUploaderEvent(controller, "upload:succeeded", spy));
 
     scope.stop();
     await controller.start();
@@ -278,9 +275,7 @@ describe("useUploaderEvent outside an effect scope", () => {
     );
     const spy = vi.fn();
     const off = useUploaderEvent(controller, "upload:paused", spy);
-    const other = effectScope();
-    other.run(() => computed(() => 1).value);
-    other.stop();
+    stopUnrelatedScope();
 
     const first = controller.start();
     await flush();
