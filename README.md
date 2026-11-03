@@ -159,6 +159,20 @@ useUploaderEvent(uploader, "upload:succeeded", ({ id }) => console.log("done", i
 onUnmounted(() => cancel());
 ```
 
+In the template, read `snapshot.progress.percent` and `snapshot.status`, and bind
+`start`, `pause`, `resume` and `cancel` to buttons.
+
+Inside a component or an `effectScope`, cleanup is automatic: when the scope
+stops, the subscription and the event handler are released. In a Pinia store or a
+plain module there is no scope, so call `dispose()` from `useUploader` and each
+`off()` returned by `useUploaderEvent` yourself when you are done.
+
+Unmounting releases the subscription but doesn't cancel the upload; call
+`cancel()` in `onUnmounted`, as above, if it should stop. The source is read once,
+so for a new set of files use a new uploader, for example with a `:key` on the
+component. Pass a built uploader instead of options to share one upload between
+components.
+
 ## What you get
 
 ### Progress
