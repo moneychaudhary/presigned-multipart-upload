@@ -234,6 +234,17 @@ describe("useUploaderEvent", () => {
     scope.stop();
   });
 
+  it("types the handler's payload by the event name", () => {
+    const controller = build();
+    const scope = effectScope();
+    scope.run(() => {
+      useUploaderEvent(controller, "upload:failed", ({ error }) => error.code);
+      // @ts-expect-error upload:succeeded carries no error
+      useUploaderEvent(controller, "upload:succeeded", ({ error }) => error);
+    });
+    scope.stop();
+  });
+
   it("stops firing once off is called", async () => {
     const controller = build();
     const spy = vi.fn();
