@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createUploader } from "../src/index.js";
 import { useUploader, useUploaderEvent, type VueUploader } from "../src/vue.js";
 import type { Uploader } from "../src/index.js";
+import { flush } from "./fakes/async.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
 import { createFakeTransport } from "./fakes/transport.js";
@@ -256,5 +257,32 @@ describe("useUploaderEvent", () => {
     await controller.start();
 
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUploaderEvent outside an effect scope", () => {
+  it("keeps firing after an unrelated scope stops, until off is called", async () => {
+    const controller = build(({ partNumber }) =>
+      partNumber >= 3 ? { kind: "hang" } : { kind: "ok" },
+    );
+    const spy = vi.fn();
+    const off = useUploaderEvent(controller, "upload:paused", spy);
+    const other = effectScope();
+    other.run(() => computed(() => 1).value);
+    other.stop();
+
+    const first = controller.start();
+    await flush();
+    await controller.pause();
+    await first;
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    off();
+    const second = controller.resume();
+    await flush();
+    await controller.pause();
+    await second;
+    expect(controller.getSnapshot().status).toBe("paused");
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
