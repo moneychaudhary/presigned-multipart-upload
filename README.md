@@ -5,7 +5,7 @@
 [![types](https://img.shields.io/npm/types/presigned-multipart-upload)](https://www.npmjs.com/package/presigned-multipart-upload)
 [![license](https://img.shields.io/npm/l/presigned-multipart-upload)](./LICENSE)
 
-Upload files of any size from React or Angular straight to S3, through presigned
+Upload files of any size from React, Vue or Angular straight to S3, through presigned
 URLs. Parts upload in parallel and retry on their own; uploads pause, resume —
 even after a page reload — and cancel. Your server mints the URLs, with a
 handler this package provides.
@@ -242,7 +242,7 @@ refused, not stored. The server handler signs them in; nothing else changes.
 
 ## Options
 
-**Uploader** — `useUploader`, `createAngularUploader`, `createUploader`:
+**Uploader** — `useUploader` (React, Vue), `createAngularUploader`, `createUploader`:
 
 | Option        | Default   |                                                                 |
 | ------------- | --------- | --------------------------------------------------------------- |
