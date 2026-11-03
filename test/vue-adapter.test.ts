@@ -74,4 +74,17 @@ describe("the Vue adapter", () => {
     expect(controller.getSnapshot().status).toBe("succeeded");
     scope.stop();
   });
+
+  it("stops updating when its effect scope stops", async () => {
+    const controller = build();
+    const scope = effectScope();
+    const u = scope.run(() => useUploader(controller))!;
+    const before = u.snapshot.value;
+
+    scope.stop();
+    await u.start();
+
+    expect(u.snapshot.value).toBe(before);
+    expect(controller.getSnapshot().status).toBe("succeeded");
+  });
 });

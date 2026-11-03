@@ -1,4 +1,4 @@
-import { shallowReadonly, shallowRef, type ShallowRef } from "vue";
+import { getCurrentScope, onScopeDispose, shallowReadonly, shallowRef, type ShallowRef } from "vue";
 
 import { toUploader, type UploaderSource } from "./uploader.js";
 import type { Uploader, UploaderSnapshot } from "./types.js";
@@ -16,12 +16,18 @@ export interface VueUploader {
   dispose: () => void;
 }
 
+// Inside setup() or effectScope().run(), release when the scope stops; outside, the caller does.
+const bindToScope = (release: () => void): void => {
+  if (getCurrentScope()) onScopeDispose(release);
+};
+
 export const useUploader = (source: UploaderSource): VueUploader => {
   const controller = toUploader(source);
   const state = shallowRef(controller.getSnapshot());
   const dispose = controller.subscribe((next) => {
     state.value = next;
   });
+  bindToScope(dispose);
   return {
     snapshot: shallowReadonly(state),
     uploader: controller,
