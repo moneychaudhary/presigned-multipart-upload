@@ -34,7 +34,8 @@ try {
 
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "smoke", private: true }));
   console.log(`installing ${tarball} into a clean project…`);
-  run("npm", ["install", `./${tarball}`, "--silent", "--no-audit", "--no-fund"], dir);
+  // Vue is an external peer, so the Vue entry cannot load without it beside the tarball.
+  run("npm", ["install", `./${tarball}`, "vue", "--silent", "--no-audit", "--no-fund"], dir);
 
   writeFileSync(
     join(dir, "esm.mjs"),
@@ -87,6 +88,54 @@ try {
       dir,
     ),
   );
+  check("the Vue entry resolves at ./vue-experimental in ESM and CJS", () => {
+    const names =
+      "for (const name of ['useUploader', 'useUploaderEvent']) if (typeof m[name] !== 'function') throw new Error(name + ' missing');";
+    run(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        `import("presigned-multipart-upload/vue-experimental").then((m) => { ${names} });`,
+      ],
+      dir,
+    );
+    run(
+      "node",
+      ["-e", `const m = require("presigned-multipart-upload/vue-experimental"); ${names}`],
+      dir,
+    );
+    return "";
+  });
+  // Vue ships as experimental until it is stable, so the bare subpath must stay unclaimed.
+  check("the old ./vue subpath is not exported", () => {
+    const expectUnexported = (code) =>
+      `${code}.then(() => { throw new Error("./vue is still exported"); }, (e) => { if (e.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw e; });`;
+    run(
+      "node",
+      ["--input-type=module", "-e", expectUnexported('import("presigned-multipart-upload/vue")')],
+      dir,
+    );
+    run(
+      "node",
+      [
+        "-e",
+        expectUnexported(
+          'Promise.resolve().then(() => require.resolve("presigned-multipart-upload/vue"))',
+        ),
+      ],
+      dir,
+    );
+    return "";
+  });
+  // Vue apps install their own copy; npm must not pull one in for everyone else.
+  check("vue is an optional peer at >=3.3", () => {
+    const manifest = join(dir, "node_modules", "presigned-multipart-upload", "package.json");
+    const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+    if (pkg.peerDependencies?.vue !== ">=3.3" || pkg.peerDependenciesMeta?.vue?.optional !== true)
+      throw new Error("vue is not an optional peer at >=3.3");
+    return "";
+  });
   // What a browser downloads: the main entry and the chunks it shares with the
   // adapters, gzipped. A budget, so growth is a decision rather than a drift.
   check("the browser bundle stays under budget", () => {

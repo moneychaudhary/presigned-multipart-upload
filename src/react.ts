@@ -4,8 +4,8 @@ import { createUploader, isUploader, type UploaderSource } from "./uploader.js";
 import type { Uploader, UploaderEvents, UploaderSnapshot, UploadFile, EventName } from "./types.js";
 
 /**
- * What `useUploader` returns. The same shape as the Vue and Angular bindings,
- * less `dispose`: React releases the subscription itself on unmount.
+ * What `useUploader` returns: the Vue binding's shape without `dispose`, because
+ * React releases the subscription itself on unmount.
  */
 export interface ReactUploader {
   snapshot: UploaderSnapshot;

@@ -15,11 +15,11 @@ const root = process.cwd();
 const dir = mkdtempSync(join(root, "node_modules", ".readme-check-"));
 const src = relative(dir, join(root, "src")).replaceAll("\\", "/");
 
-const preamble = `import { createUploader, httpTransport, listResumable, resumeUploader,
+// Imports and declarations every snippet shares, whichever binding it uses.
+const common = `import { createUploader, httpTransport, listResumable, resumeUploader,
   UploaderStatus, UploadEvent, UploadErrorCode,
   type Uploader, type Transport, type UploaderSnapshot } from "${src}/index.js";
 import { createIndexedDbStore, scopeStore } from "${src}/advanced.js";
-import { useUploader, useUploaderEvent } from "${src}/react.js";
 import { createUploadHandler, toNodeHandler } from "${src}/server.js";
 import { S3Client } from "@aws-sdk/client-s3";
 declare const file: File; declare const files: File[];
@@ -30,11 +30,30 @@ declare const currentUserId: () => string;
 declare const s3: S3Client;
 declare const app: { post: (path: string, handler: unknown) => void };
 void [createUploader, httpTransport, listResumable, resumeUploader, createIndexedDbStore,
-  scopeStore, UploaderStatus, UploadEvent, UploadErrorCode, useUploader, useUploaderEvent,
-  createUploadHandler, toNodeHandler, S3Client, file, files, transport, uploader, snapshot,
-  askUserToPickAgain, currentUserId, s3, app];
-export async function snippet() {
+  scopeStore, UploaderStatus, UploadEvent, UploadErrorCode, createUploadHandler,
+  toNodeHandler, S3Client, file, files, transport, uploader, snapshot, askUserToPickAgain,
+  currentUserId, s3, app];
 `;
+
+// React's useUploader names; a block gets these unless it imports another binding.
+const reactBindings = `import { useUploader, useUploaderEvent } from "${src}/react.js";
+void [useUploader, useUploaderEvent];
+`;
+
+// Vue's names, under the same identifiers a Vue user writes.
+const vueBindings = `import { useUploader, useUploaderEvent } from "${src}/vue.js";
+import { onUnmounted, onScopeDispose } from "vue";
+void [useUploader, useUploaderEvent, onUnmounted, onScopeDispose];
+`;
+
+// The preamble for one block, picked from the binding it imports.
+const preambleFor = (code) => {
+  const bindings = code.includes('from "presigned-multipart-upload/vue-experimental"')
+    ? vueBindings
+    : reactBindings;
+  return `${common}${bindings}export async function snippet() {
+`;
+};
 
 try {
   const md = readFileSync(join(root, "README.md"), "utf8");
@@ -55,7 +74,7 @@ try {
       .filter((line) => !line.startsWith("import "))
       .map((line) => line.replace(/^export /, ""))
       .join("\n");
-    writeFileSync(join(dir, `block${index}.${lang}`), `${preamble}${body}\n}\n`);
+    writeFileSync(join(dir, `block${index}.${lang}`), `${preambleFor(code)}${body}\n}\n`);
     written += 1;
   });
 

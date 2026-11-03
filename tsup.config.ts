@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     react: "src/react.ts",
     angular: "src/angular.ts",
+    "vue-experimental": "src/vue.ts",
     advanced: "src/advanced.ts",
     server: "src/server.ts",
   },
@@ -22,5 +23,5 @@ export default defineConfig({
   splitting: true,
   treeshake: true,
   // Frameworks are optional peers; importing the Core must never pull one in.
-  external: ["react", "@angular/core", "rxjs", /^@aws-sdk\//, /^node:/],
+  external: ["react", "vue", "@angular/core", "rxjs", /^@aws-sdk\//, /^node:/],
 });
