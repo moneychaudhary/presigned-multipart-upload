@@ -12,7 +12,7 @@ export interface VueUploader {
   pause: Uploader["pause"];
   resume: Uploader["resume"];
   cancel: Uploader["cancel"];
-  /** Release the subscription. */
+  /** Release the subscription; automatic inside a scope, and it never cancels the upload. */
   dispose: () => void;
 }
 
@@ -21,6 +21,7 @@ const bindToScope = (release: () => void): void => {
   if (getCurrentScope()) onScopeDispose(release);
 };
 
+/** Bind an Uploader to Vue; cleans up with the active scope, or through `dispose` without one. */
 export const useUploader = (source: UploaderSource): VueUploader => {
   const controller = toUploader(source);
   const state = shallowRef(controller.getSnapshot());
