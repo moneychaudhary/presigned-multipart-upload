@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
+import { actionsOf, type UploaderActions } from "./bindings.js";
 import { createUploader, isUploader, type UploaderSource } from "./uploader.js";
 import type { Uploader, UploaderEvents, UploaderSnapshot, UploadFile, EventName } from "./types.js";
 
@@ -7,14 +8,10 @@ import type { Uploader, UploaderEvents, UploaderSnapshot, UploadFile, EventName 
  * What `useUploader` returns: the Vue binding's shape without `dispose`, because
  * React releases the subscription itself on unmount.
  */
-export interface ReactUploader {
+export interface ReactUploader extends UploaderActions {
   snapshot: UploaderSnapshot;
   /** The Uploader itself, for `on` and to hand to a child component. */
   uploader: Uploader;
-  start: Uploader["start"];
-  pause: Uploader["pause"];
-  resume: Uploader["resume"];
-  cancel: Uploader["cancel"];
 }
 
 const sameFiles = (a: UploadFile[], b: UploadFile[]): boolean =>
@@ -56,10 +53,7 @@ export const useUploader = (source: UploaderSource): ReactUploader => {
   return {
     snapshot,
     uploader: controller,
-    start: controller.start,
-    pause: controller.pause,
-    resume: controller.resume,
-    cancel: controller.cancel,
+    ...actionsOf(controller),
   };
 };
 
