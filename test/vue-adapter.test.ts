@@ -1,9 +1,19 @@
 // @vitest-environment happy-dom
-import { computed, effectScope, isReadonly, isRef, toRaw } from "vue";
+import {
+  computed,
+  createApp,
+  defineComponent,
+  effectScope,
+  h,
+  isReadonly,
+  isRef,
+  nextTick,
+  toRaw,
+} from "vue";
 import { describe, expect, it, vi } from "vitest";
 
 import { createUploader } from "../src/index.js";
-import { useUploader } from "../src/vue.js";
+import { useUploader, type VueUploader } from "../src/vue.js";
 import type { Uploader } from "../src/index.js";
 import { KB, makeFile } from "./fakes/file.js";
 import { createFakePlatform, type Script } from "./fakes/platform.js";
@@ -157,6 +167,54 @@ describe("the Vue adapter outside an effect scope", () => {
     await u.start();
 
     expect(u.snapshot.value.status).toBe("idle");
+    expect(controller.getSnapshot().status).toBe("succeeded");
+  });
+});
+
+describe("the Vue adapter in a mounted component", () => {
+  const mountView = (controller: Uploader, renders = vi.fn()) => {
+    let bound: VueUploader | null = null;
+    const View = defineComponent({
+      setup: () => {
+        bound = useUploader(controller);
+        const { snapshot } = bound;
+        return () => {
+          renders();
+          return h("div", `${snapshot.value.status}:${snapshot.value.progress.percent}`);
+        };
+      },
+    });
+    const el = document.createElement("div");
+    document.body.append(el);
+    const app = createApp(View);
+    app.mount(el);
+    return { app, el, bound: bound! };
+  };
+
+  it("renders current state and updates as the Upload moves", async () => {
+    const controller = build();
+    const { app, el } = mountView(controller);
+    expect(el.textContent).toBe("idle:0");
+
+    await controller.start();
+    await nextTick();
+
+    expect(el.textContent).toBe("succeeded:100");
+    app.unmount();
+  });
+
+  it("stops observing after unmount", async () => {
+    const controller = build();
+    const renders = vi.fn();
+    const { app, bound } = mountView(controller, renders);
+    const before = renders.mock.calls.length;
+
+    app.unmount();
+    await controller.start();
+    await nextTick();
+
+    expect(renders.mock.calls.length).toBe(before);
+    expect(bound.snapshot.value.status).toBe("idle");
     expect(controller.getSnapshot().status).toBe("succeeded");
   });
 });
