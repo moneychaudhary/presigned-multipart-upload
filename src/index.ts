@@ -1,6 +1,6 @@
-// What most applications need: build an Uploader (or let the React or Angular
-// binding build one), talk to your backend, and take uploads back up after a
-// reload. Extension points — a custom Platform, failure shapes, the
+// What most applications need: build an Uploader (or let the React, Vue or
+// Angular binding build one), talk to your backend, and take uploads back up
+// after a reload. Extension points — a custom Platform, failure shapes, the
 // classifier, Record Stores — live in "presigned-multipart-upload/advanced".
 
 export { createUploader } from "./uploader.js";

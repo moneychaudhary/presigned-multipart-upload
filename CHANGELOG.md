@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `presigned-multipart-upload/vue`: `useUploader` and `useUploaderEvent` for Vue 3.3+,
+  cleaned up with the effect scope.
+
 ## 0.1.1
 
 - `presigned-multipart-upload/package.json` is now exported, for tools that

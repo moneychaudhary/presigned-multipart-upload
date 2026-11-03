@@ -5,7 +5,7 @@
 [![types](https://img.shields.io/npm/types/presigned-multipart-upload)](https://www.npmjs.com/package/presigned-multipart-upload)
 [![license](https://img.shields.io/npm/l/presigned-multipart-upload)](./LICENSE)
 
-Upload files of any size from React or Angular straight to S3, through presigned
+Upload files of any size from React, Vue or Angular straight to S3, through presigned
 URLs. Parts upload in parallel and retry on their own; uploads pause, resume —
 even after a page reload — and cancel. Your server mints the URLs, with a
 handler this package provides.
@@ -142,6 +142,37 @@ Signals work zoned and zoneless; `snapshot$` is the same state for RxJS code.
 
 Full example: [`playground/src/angular`](https://github.com/moneychaudhary/presigned-multipart-upload/tree/main/playground/src/angular).
 
+### 3. Or in Vue
+
+```ts
+import { onUnmounted } from "vue";
+import { httpTransport } from "presigned-multipart-upload";
+import { useUploader, useUploaderEvent } from "presigned-multipart-upload/vue";
+
+// In <script setup lang="ts"> or setup()
+const { snapshot, uploader, start, pause, resume, cancel } = useUploader({
+  files,
+  transport: httpTransport({ baseUrl: "/api/uploads" }),
+});
+useUploaderEvent(uploader, "upload:succeeded", ({ id }) => console.log("done", id));
+// Leaving the page keeps the upload going; cancel here only if it should stop.
+onUnmounted(() => cancel());
+```
+
+In the template, read `snapshot.progress.percent` and `snapshot.status`, and bind
+`start`, `pause`, `resume` and `cancel` to buttons.
+
+Inside a component or an `effectScope`, cleanup is automatic: when the scope
+stops, the subscription and the event handler are released. In a Pinia store or a
+plain module there is no scope, so call `dispose()` from `useUploader` and each
+`off()` returned by `useUploaderEvent` yourself when you are done.
+
+Unmounting releases the subscription but doesn't cancel the upload; call
+`cancel()` in `onUnmounted`, as above, if it should stop. The source is read once,
+so for a new set of files use a new uploader, for example with a `:key` on the
+component. Pass a built uploader instead of options to share one upload between
+components.
+
 ## What you get
 
 ### Progress
@@ -211,7 +242,7 @@ refused, not stored. The server handler signs them in; nothing else changes.
 
 ## Options
 
-**Uploader** — `useUploader`, `createAngularUploader`, `createUploader`:
+**Uploader** — `useUploader` (React, Vue), `createAngularUploader`, `createUploader`:
 
 | Option        | Default   |                                                                 |
 | ------------- | --------- | --------------------------------------------------------------- |
