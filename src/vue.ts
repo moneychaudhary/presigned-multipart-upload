@@ -40,6 +40,7 @@ export const useUploader = (source: UploaderSource): VueUploader => {
   };
 };
 
+/** Listen for one event; removed with the active scope, or through the returned `off` without one. */
 export const useUploaderEvent = <T extends EventName>(
   controller: Uploader,
   type: T,
