@@ -142,6 +142,23 @@ Signals work zoned and zoneless; `snapshot$` is the same state for RxJS code.
 
 Full example: [`playground/src/angular`](https://github.com/moneychaudhary/presigned-multipart-upload/tree/main/playground/src/angular).
 
+### 3. Or in Vue
+
+```ts
+import { onUnmounted } from "vue";
+import { httpTransport } from "presigned-multipart-upload";
+import { useUploader, useUploaderEvent } from "presigned-multipart-upload/vue";
+
+// In <script setup lang="ts"> or setup()
+const { snapshot, uploader, start, pause, resume, cancel } = useUploader({
+  files,
+  transport: httpTransport({ baseUrl: "/api/uploads" }),
+});
+useUploaderEvent(uploader, "upload:succeeded", ({ id }) => console.log("done", id));
+// Leaving the page keeps the upload going; cancel here only if it should stop.
+onUnmounted(() => cancel());
+```
+
 ## What you get
 
 ### Progress

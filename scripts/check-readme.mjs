@@ -40,9 +40,20 @@ const reactBindings = `import { useUploader, useUploaderEvent } from "${src}/rea
 void [useUploader, useUploaderEvent];
 `;
 
-// The preamble for one block, picked from the binding it imports.
-const preambleFor = (_code) => `${common}${reactBindings}export async function snippet() {
+// Vue's names, under the same identifiers a Vue user writes.
+const vueBindings = `import { useUploader, useUploaderEvent } from "${src}/vue.js";
+import { onUnmounted, onScopeDispose } from "vue";
+void [useUploader, useUploaderEvent, onUnmounted, onScopeDispose];
 `;
+
+// The preamble for one block, picked from the binding it imports.
+const preambleFor = (code) => {
+  const bindings = code.includes('from "presigned-multipart-upload/vue"')
+    ? vueBindings
+    : reactBindings;
+  return `${common}${bindings}export async function snippet() {
+`;
+};
 
 try {
   const md = readFileSync(join(root, "README.md"), "utf8");
