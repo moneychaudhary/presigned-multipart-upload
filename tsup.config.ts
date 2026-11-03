@@ -5,7 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     react: "src/react.ts",
     angular: "src/angular.ts",
-    vue: "src/vue.ts",
+    "vue-experimental": "src/vue.ts",
     advanced: "src/advanced.ts",
     server: "src/server.ts",
   },
